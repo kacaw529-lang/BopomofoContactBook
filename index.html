@@ -633,7 +633,7 @@ function speakToday(){
   const [y,m,d]=currentDate.split('-').map(Number);
   parts.push(`${m}月${d}日，星期${weekday(currentDate)}，今天的功課有：`);
   if(day.homework.length) day.homework.forEach((h,i)=>parts.push(`第${i+1}項，${h.text}。`));
-  else parts.push('今天沒有功課。');
+  else parts.push('等等，今天功課還沒有派送。');
   if(day.idioms.length) day.idioms.forEach(i=>parts.push(`今天的成語是${i.text}。${i.mean||''}`));
   if(day.reminder) parts.push(`老師叮嚀：${day.reminder}`);
   const u=new SpeechSynthesisUtterance(parts.join(''));
