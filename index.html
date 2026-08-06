@@ -106,6 +106,28 @@
   .lk-edit-ic img{width:100%;height:100%;object-fit:cover}
   .mini-act{display:inline-block;margin-top:6px;margin-right:8px;font-size:12px;font-weight:700;color:var(--accent2);cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:3px 10px;background:#fff}
   .mini-act:hover{background:#eef6f1}
+  .viewbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .seg{display:inline-flex;background:#eef3ee;border-radius:999px;padding:3px}
+  .segbtn{border:none;background:transparent;color:var(--accent2);font:inherit;font-weight:700;font-size:13.5px;
+    border-radius:999px;padding:7px 18px;cursor:pointer;min-height:36px}
+  .segbtn.active{background:var(--accent2);color:#fff}
+  .wk-grid{display:grid;gap:10px;grid-template-columns:1fr}
+  @media(min-width:700px){.wk-grid{grid-template-columns:repeat(5,1fr)}}
+  .wk-day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:var(--shadow)}
+  .wk-day.today{border-color:var(--accent);box-shadow:0 0 0 2px rgba(224,123,57,.18)}
+  .wk-date{font-weight:800;color:var(--accent2);font-size:13.5px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  .wk-date .wd{background:var(--accent);color:#fff;border-radius:999px;padding:1px 8px;font-size:11.5px}
+  .wk-item{font-size:13.5px;padding:4px 0;border-top:1px dashed var(--line);line-height:1.5}
+  .wk-item:first-of-type{border-top:none}
+  .wk-item .dg{color:var(--accent);font-size:11.5px;font-weight:700}
+  .wk-empty{font-size:12.5px;color:var(--muted);padding:4px 0}
+  .wk-rem{margin-top:6px;font-size:12.5px;color:#8a6d3b;background:#fff8ec;border-radius:8px;padding:4px 8px}
+  .tpl-box{margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:12px;background:#fdfcf8}
+  .tpl-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:8px}
+  .tpl{position:relative;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--accent2);background:#fff;color:var(--accent2);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .tpl:hover{background:#eef6f1}
+  .tpl .x{color:var(--danger);font-weight:800;opacity:.55;padding:0 2px}
+  .tpl .x:hover{opacity:1}
   .check-list{display:flex;flex-direction:column;gap:8px;margin:10px 0}
   .check{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer;font-size:16px}
   .check input{width:22px;height:22px;accent-color:var(--accent2)}
@@ -190,6 +212,17 @@
       </div>
       <p class="hint">注音自動產生（破音字與台灣讀音已處理）。若有錯，點清單裡的「注音 ✎」可手動修改。勾「數位作業」的項目才會出現在聯絡簿的數位作業繳交區。</p>
       <div id="hwList"></div>
+      <div class="tpl-box">
+        <div class="tpl-head">
+          <span>📌 常用範本（點一下帶入）</span>
+          <button class="mini-act" id="copyPrev">⧉ 複製前一天功課</button>
+        </div>
+        <div class="quick" id="tplList"></div>
+        <div class="row" style="margin-top:6px">
+          <div class="field"><label>新增範本</label><input type="text" id="tplNew" placeholder="如：國語生字語詞"></div>
+          <button class="btn btn-ghost" id="tplAdd">＋ 存為範本</button>
+        </div>
+      </div>
       <div class="field" style="margin-top:12px"><label>今日叮嚀（選填，會以黃字顯示在黑板）</label><input type="text" id="hwReminder" placeholder="帶齊文具，認真完成作業喔！"></div>
     </div>
     <div class="card">
@@ -224,6 +257,14 @@
 
   <!-- 聯絡簿（投影＋家長＋繳交 整合一頁） -->
   <section class="panel active" id="panel-main">
+    <div class="viewbar">
+      <div class="seg">
+        <button class="segbtn active" id="viewDay">本日</button>
+        <button class="segbtn" id="viewWeek">本週</button>
+      </div>
+      <button class="mini-act" id="speakBtn" title="朗讀今日功課">🔊 朗讀功課</button>
+    </div>
+    <div id="weekWrap" style="display:none"></div>
     <div class="zoombar">
       <span>黑板字級</span>
       <button class="zbtn" id="zoomOut" title="縮小">A−</button>
@@ -294,7 +335,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -401,6 +442,7 @@ async function submitWork(rec){if(useApi)await apiPost({action:'submit',date:cur
 /* ============ 狀態 ============ */
 const DEFAULT_ROSTER=['1號','2號','3號','4號','5號','6號'];
 let currentDate=todayISO(),day={homework:[],idioms:[],reminder:''},links=[],subs=[],roster=DEFAULT_ROSTER.slice(),audit={},dash={roster:[],days:[]};
+let templates=(()=>{try{return LS.get('cb:templates')||[];}catch(e){return [];}})();
 let zoom=(()=>{try{return parseFloat(localStorage.getItem('cb:zoom'))||1;}catch(e){return 1;}})();
 function isBoardFs(){return document.fullscreenElement===document.getElementById('board');}
 function applyZoom(){const v=document.getElementById('vboard');if(v)v.style.zoom=zoom;const l=document.getElementById('zoomLabel');if(l)l.textContent=Math.round(zoom*100)+'%';try{localStorage.setItem('cb:zoom',zoom);}catch(e){}}
@@ -424,7 +466,39 @@ function driveImg(u){if(!u)return u;const m=String(u).match(/[?&]id=([-\w]+)/)||
 const weekday=iso=>WD[new Date(iso+'T00:00:00').getDay()];
 function dateCN(iso){const[y,m,d]=iso.split('-').map(Number);return `日期：${numCN(m)}月${numCN(d)}日（${weekday(iso)}）`;}
 function resizeImage(file,maxDim=720,q=.72){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{let{width:w,height:h}=img;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.onerror=rej;img.src=r.result;};r.onerror=rej;r.readAsDataURL(file);});}
-async function refresh(){const d=await loadData(currentDate);day={homework:d.homework||[],idioms:d.idioms||[],reminder:d.reminder||''};links=d.links||[];subs=d.submissions||[];roster=(d.roster&&d.roster.length)?d.roster:DEFAULT_ROSTER.slice();audit=d.audit||{};renderAll();}
+function applyData(d){
+  day={homework:d.homework||[],idioms:d.idioms||[],reminder:d.reminder||''};
+  links=d.links||[];subs=d.submissions||[];
+  roster=(d.roster&&d.roster.length)?d.roster:DEFAULT_ROSTER.slice();
+  audit=d.audit||{};
+  if(d.templates) templates=d.templates;
+}
+// 快取：讓再次開啟時先秒顯上次內容，避免空白或閃跳
+const CK=d=>'cb:cache:'+d;
+function readCache(date){try{const c=LS.get(CK(date));return (c&&c.data)?c:null;}catch(e){return null;}}
+function writeCache(date,data){try{LS.set(CK(date),{t:Date.now(),data});}catch(e){}}
+
+async function refresh(opts){
+  const date=currentDate,silent=opts&&opts.silent;
+  if(!silent){
+    const c=readCache(date);
+    if(c){ applyData(c.data); renderAll(); }        // 先用快取立即呈現
+    else { setLoading(true); }                       // 無快取才顯示載入中
+  }
+  try{
+    const d=await loadData(date);
+    if(date!==currentDate) return;                   // 期間切換過日期就丟棄
+    applyData(d); writeCache(date,d); setLoading(false); renderAll();
+  }catch(e){
+    setLoading(false);
+    if(!readCache(date)) renderAll();
+  }
+}
+function setLoading(on){
+  const v=document.getElementById('vboard');
+  if(on&&v&&!v.dataset.loaded) v.innerHTML='<div class="spin">載入中…</div>';
+  if(!on&&v) v.dataset.loaded='1';
+}
 
 /* ============ 渲染：黑板 ============ */
 function buildVColumns(target,withReminder){
@@ -480,6 +554,67 @@ function renderMain(){
 function rosterAudit(name){return audit[name]||{};}
 function latestSubs(){const l={};subs.forEach(s=>{if(!l[s.student]||s.ts>l[s.student].ts)l[s.student]=s;});return l;}
 function matchOnline(name){const ls=latestSubs();for(const k in ls){if(k===name||k.indexOf(name)>=0||name.indexOf(k)>=0)return ls[k];}return null;}
+/* ============ 一週檢視 ============ */
+function weekRange(iso){
+  const d=new Date(iso+'T00:00:00'), dow=d.getDay();
+  const mon=new Date(d); mon.setDate(d.getDate()-((dow+6)%7));   // 週一
+  const out=[];
+  for(let i=0;i<5;i++){const x=new Date(mon);x.setDate(mon.getDate()+i);
+    x.setMinutes(x.getMinutes()-x.getTimezoneOffset());out.push(x.toISOString().slice(0,10));}
+  return out;
+}
+async function renderWeek(){
+  const wrap=document.getElementById('weekWrap');if(!wrap)return;
+  const days=weekRange(currentDate), today=todayISO();
+  wrap.innerHTML='<div class="spin" style="color:var(--muted)">載入本週…</div>';
+  let data=[];
+  if(useApi){
+    try{ const r=await jsonp({action:'range',from:days[0],to:days[4]});
+      data=days.map(d=>{const f=(r.days||[]).find(x=>x.date===d);return {date:d,homework:f?f.homework:[],reminder:''};});
+    }catch(e){ data=days.map(d=>({date:d,homework:[],reminder:''})); }
+  }else{
+    data=days.map(d=>{const o=LS.get('cb:'+d)||{};return {date:d,homework:o.homework||[],reminder:o.reminder||''};});
+  }
+  wrap.innerHTML='<div class="wk-grid">'+data.map(x=>{
+    const [y,m,dd]=x.date.split('-');
+    const items=x.homework.length?x.homework.map(h=>`<div class="wk-item">${esc(h.text)}${h.digital?' <span class="dg">📱數位</span>':''}</div>`).join(''):'<div class="wk-empty">無功課</div>';
+    return `<div class="wk-day${x.date===today?' today':''}"><div class="wk-date"><span>${+m}/${+dd}</span><span class="wd">${weekday(x.date)}</span></div>${items}${x.reminder?`<div class="wk-rem">⭐ ${esc(x.reminder)}</div>`:''}</div>`;
+  }).join('')+'</div>';
+}
+function setView(mode){
+  const isWeek=mode==='week';
+  document.getElementById('viewDay').classList.toggle('active',!isWeek);
+  document.getElementById('viewWeek').classList.toggle('active',isWeek);
+  document.querySelector('.board-outer').style.display=isWeek?'none':'';
+  document.querySelector('.zoombar').style.display=isWeek?'none':'flex';
+  const bh=document.getElementById('boardHint');if(bh)bh.style.display=isWeek?'none':'';
+  document.getElementById('weekWrap').style.display=isWeek?'':'none';
+  if(isWeek)renderWeek();
+}
+
+/* ============ 朗讀（瀏覽器內建語音） ============ */
+function speakToday(){
+  if(!('speechSynthesis' in window)){toast('⚠️ 此裝置不支援朗讀');return;}
+  const sp=window.speechSynthesis;
+  if(sp.speaking){sp.cancel();toast('🔇 已停止朗讀');return;}
+  const parts=[];
+  const [y,m,d]=currentDate.split('-').map(Number);
+  parts.push(`${m}月${d}日，星期${weekday(currentDate)}，今天的功課有：`);
+  if(day.homework.length) day.homework.forEach((h,i)=>parts.push(`第${i+1}項，${h.text}。`));
+  else parts.push('今天沒有功課。');
+  if(day.idioms.length) day.idioms.forEach(i=>parts.push(`今天的成語是${i.text}。${i.mean||''}`));
+  if(day.reminder) parts.push(`老師叮嚀：${day.reminder}`);
+  const u=new SpeechSynthesisUtterance(parts.join(''));
+  u.lang='zh-TW'; u.rate=0.85;                    // 放慢，適合三年級跟讀
+  u.onend=()=>toast('✅ 朗讀完畢');
+  sp.cancel(); sp.speak(u); toast('🔊 朗讀中…（再按一次可停止）');
+}
+
+async function saveTemplates(){const snap=templates.slice();LS.set('cb:templates',snap);return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveTemplates',templates:snap});}));}
+function renderTemplates(){
+  const el=document.getElementById('tplList');if(!el)return;
+  el.innerHTML=templates.length?templates.map((t,i)=>`<span class="tpl" data-tpl="${i}">${esc(t)}<span class="x" data-tpldel="${i}" title="刪除範本">✕</span></span>`).join(''):'<span class="hint" style="margin:0">尚無範本，可在下方新增，或把常打的功課存起來</span>';
+}
 function renderRoster(){}
 function renderTrack(){
   const items=day.homework,stats=document.getElementById('trackStats'),tbl=document.getElementById('trackTable');
@@ -502,7 +637,7 @@ function renderTrack(){
     +(unfinished.length?`<span class="stat" style="background:#fbeae6;border-color:#eecabf;color:#9a4a36">未交齊：${unfinished.map(esc).join('、')}</span>`
       :`<span class="stat" style="background:#eef6f1;border-color:var(--accent2);color:#2f6b50">全班交齊 🎉</span>`);
 }
-function renderAll(){renderHwList();renderIdList();renderLkEdit();renderRoster();renderMain();renderTrack();}
+function renderAll(){renderHwList();renderIdList();renderLkEdit();renderRoster();renderTemplates();renderMain();renderTrack();}
 
 /* ============ 未補繳儀表板 ============ */
 const dateShort=iso=>{const[y,m,d]=iso.split('-').map(Number);return `${m}/${d}（${weekday(iso)}）`;};
@@ -564,6 +699,30 @@ document.getElementById('zoomOut').onclick=()=>{zoom=Math.max(0.6,Math.round((zo
 document.getElementById('subSend').onclick=async()=>{const name=subName.value.trim();if(!name){alert('請先填寫姓名');return;}const done={};document.querySelectorAll('#subChecks .check input:checked').forEach(cb=>done[cb.dataset.hwid]=true);const note=subNote.value.trim();const f=subPhoto.files[0];let photo='';if(f){try{photo=await resizeImage(f,900,.7);}catch(e){}}const btn=document.getElementById('subSend');btn.disabled=true;try{await submitWork({student:name,done,note,photo});}catch(e){}btn.disabled=false;document.getElementById('subConfirm').innerHTML='<div class="confirm">✅ '+esc(name)+'，已收到繳交紀錄！</div>';subName.value='';subNote.value='';subPhoto.value='';document.querySelectorAll('#subChecks .check').forEach(c=>{c.classList.remove('done');c.querySelector('input').checked=false;});if(!useApi)refresh();};
 document.getElementById('exportCsv').onclick=()=>{const items=day.homework;const header=['學生',...items.map(i=>i.text),'已交數'];const rows=roster.map(name=>{const a=rosterAudit(name);let d=0;const c=items.map(i=>{const v=a[i.id];if(v===true){d++;return '✓';}if(v==='exempt')return '免';return '';});return [name,...c,d+'/'+items.length];});const csv=[header,...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`作業繳交登記表_${currentDate}.csv`;a.click();URL.revokeObjectURL(a.href);};
 document.getElementById('refreshTrack').onclick=refresh;
+document.getElementById('viewDay').onclick=()=>setView('day');
+document.getElementById('viewWeek').onclick=()=>setView('week');
+document.getElementById('speakBtn').onclick=speakToday;
+// 功課範本
+document.getElementById('tplAdd').onclick=async()=>{const v=document.getElementById('tplNew').value.trim();if(!v)return;if(templates.indexOf(v)<0)templates.push(v);await saveTemplates();document.getElementById('tplNew').value='';renderTemplates();};
+document.getElementById('tplList').addEventListener('click',async e=>{
+  const del=e.target.closest('[data-tpldel]');
+  if(del){e.stopPropagation();templates.splice(+del.dataset.tpldel,1);await saveTemplates();renderTemplates();return;}
+  const t=e.target.closest('[data-tpl]');
+  if(t){const text=templates[+t.dataset.tpl];if(!text)return;day.homework.push({id:uid(),text,digital:false,zhuyin:{}});await saveDay();renderAll();}
+});
+document.getElementById('copyPrev').onclick=async()=>{
+  const d=new Date(currentDate+'T00:00:00');
+  for(let back=1;back<=7;back++){
+    const p=new Date(d);p.setDate(p.getDate()-back);p.setMinutes(p.getMinutes()-p.getTimezoneOffset());
+    const iso=p.toISOString().slice(0,10);
+    const prev=await loadData(iso);
+    if(prev&&prev.homework&&prev.homework.length){
+      prev.homework.forEach(h=>day.homework.push({id:uid(),text:h.text,digital:!!h.digital,zhuyin:{}}));
+      await saveDay();renderAll();toast('✅ 已帶入 '+iso.slice(5).replace('-','/')+' 的 '+prev.homework.length+' 筆功課');return;
+    }
+  }
+  toast('⚠️ 前七天內找不到功課紀錄');
+};
 document.getElementById('trackTable').addEventListener('change',async e=>{const cb=e.target.closest('.audit');if(!cb)return;const stu=cb.dataset.stu,item=cb.dataset.item;if(!audit[stu])audit[stu]={};if(cb.checked)audit[stu][item]=true;else delete audit[stu][item];await saveAudit();renderTrack();});
 document.getElementById('trackTable').addEventListener('click',async e=>{const b=e.target.closest('.exempt');if(!b)return;const stu=b.dataset.stu,item=b.dataset.item;if(audit[stu])delete audit[stu][item];await saveAudit();renderTrack();});
 document.getElementById('importOnline').onclick=async()=>{roster.forEach(name=>{const on=matchOnline(name);if(on&&on.done){audit[name]=audit[name]||{};Object.keys(on.done).forEach(id=>{if(on.done[id])audit[name][id]=true;});}});await saveAudit();renderTrack();};
@@ -575,9 +734,9 @@ document.getElementById('copyParentLink').onclick=async()=>{const url=location.h
 function applyParentMode(){
   if(location.hash==='#parent'){
     document.body.classList.add('parent-mode');
-    setInterval(refresh, 5*60*1000);                                  // 每 5 分鐘自動更新
-    document.addEventListener('visibilitychange',()=>{                 // 切回頁面即更新
-      if(document.visibilityState==='visible') refresh();
+    setInterval(()=>refresh({silent:true}), 5*60*1000);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible') refresh({silent:true});
     });
   }
 }
