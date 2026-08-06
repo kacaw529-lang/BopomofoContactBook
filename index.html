@@ -253,6 +253,16 @@
       <button class="btn btn-orange" id="copyParentLink" style="margin-top:8px">📋 複製家長連結</button>
       <span id="copyMsg" class="hint"></span>
     </div>
+
+    <div class="card">
+      <h2>🔒 教師權限</h2>
+      <p class="hint" style="margin-top:0">修改內容需要教師密碼。密碼會記在這台裝置；若使用公用電腦，離開前請按「登出」。</p>
+      <div class="row" style="margin-top:8px">
+        <button class="btn btn-ghost" id="passSet">🔑 輸入／變更密碼</button>
+        <button class="btn btn-ghost" id="passOut">🚪 登出此裝置</button>
+        <span id="passState" class="hint"></span>
+      </div>
+    </div>
   </section>
 
   <!-- 聯絡簿（投影＋家長＋繳交 整合一頁） -->
@@ -335,7 +345,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -420,7 +430,29 @@ function numCN(n){const d='零一二三四五六七八九';if(n<=10)return n===1
 /* ============ 儲存層 ============ */
 const useApi=!!API_URL;
 function jsonp(params){return new Promise((resolve,reject)=>{const cb='cb_'+Date.now()+Math.floor(Math.random()*1e4);window[cb]=d=>{resolve(d);cleanup();};const s=document.createElement('script');s.src=API_URL+'?'+new URLSearchParams({...params,callback:cb}).toString();s.onerror=()=>{reject(new Error('連線失敗'));cleanup();};function cleanup(){delete window[cb];s.remove();}document.body.appendChild(s);setTimeout(()=>{if(window[cb]){reject(new Error('逾時'));cleanup();}},15000);});}
-async function apiPost(payload){await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});}
+let teacherPass=(()=>{try{return sessionStorage.getItem('cb:pass')||localStorage.getItem('cb:pass')||'';}catch(e){return '';}})();
+function setPass(p,remember){teacherPass=p;try{sessionStorage.setItem('cb:pass',p);if(remember)localStorage.setItem('cb:pass',p);}catch(e){}}
+function clearPass(){teacherPass='';try{sessionStorage.removeItem('cb:pass');localStorage.removeItem('cb:pass');}catch(e){}}
+function askPass(msg){
+  const p=prompt((msg||'請輸入教師密碼才能修改內容：'),'');
+  if(p===null||p==='')return false;
+  setPass(p,true);return true;
+}
+async function apiPost(payload){
+  const teacherAction=payload.action!=='submit';
+  if(teacherAction){
+    if(!teacherPass && !askPass()) throw new Error('AUTH_CANCEL');
+    payload={...payload,pass:teacherPass};
+  }
+  const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+  let j=null;try{j=await res.json();}catch(e){}
+  if(j&&j.ok===false&&j.code==='AUTH'){
+    clearPass();
+    if(askPass('密碼錯誤，請重新輸入教師密碼：')){payload.pass=teacherPass;return apiPost(payload);}
+    throw new Error('AUTH');
+  }
+  return j;
+}
 const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 async function loadData(date){
   if(useApi){try{return await jsonp({action:'load',date});}catch(e){return {homework:[],idioms:[],reminder:'',links:LS.get('cb:links')||[],submissions:[],roster:LS.get('cb:roster')||DEFAULT_ROSTER.slice(),audit:LS.get('cb:audit:'+date)||{}};}}
@@ -429,7 +461,7 @@ async function loadData(date){
 }
 let toastTimer=null;
 function toast(msg,keep){const t=document.getElementById('saveToast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);if(!keep)toastTimer=setTimeout(()=>t.classList.remove('show'),1600);}
-async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');}catch(e){toast('⚠️ 儲存失敗，請檢查網路');}}
+async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':'⚠️ 儲存失敗，請檢查網路');}}
 let saveQueue=Promise.resolve();
 function enqueue(fn){saveQueue=saveQueue.then(fn,fn);return saveQueue;}
 async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveDay',date,...snapshot});else LS.set('cb:'+date,snapshot);}));}
@@ -699,6 +731,9 @@ document.getElementById('zoomOut').onclick=()=>{zoom=Math.max(0.6,Math.round((zo
 document.getElementById('subSend').onclick=async()=>{const name=subName.value.trim();if(!name){alert('請先填寫姓名');return;}const done={};document.querySelectorAll('#subChecks .check input:checked').forEach(cb=>done[cb.dataset.hwid]=true);const note=subNote.value.trim();const f=subPhoto.files[0];let photo='';if(f){try{photo=await resizeImage(f,900,.7);}catch(e){}}const btn=document.getElementById('subSend');btn.disabled=true;try{await submitWork({student:name,done,note,photo});}catch(e){}btn.disabled=false;document.getElementById('subConfirm').innerHTML='<div class="confirm">✅ '+esc(name)+'，已收到繳交紀錄！</div>';subName.value='';subNote.value='';subPhoto.value='';document.querySelectorAll('#subChecks .check').forEach(c=>{c.classList.remove('done');c.querySelector('input').checked=false;});if(!useApi)refresh();};
 document.getElementById('exportCsv').onclick=()=>{const items=day.homework;const header=['學生',...items.map(i=>i.text),'已交數'];const rows=roster.map(name=>{const a=rosterAudit(name);let d=0;const c=items.map(i=>{const v=a[i.id];if(v===true){d++;return '✓';}if(v==='exempt')return '免';return '';});return [name,...c,d+'/'+items.length];});const csv=[header,...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`作業繳交登記表_${currentDate}.csv`;a.click();URL.revokeObjectURL(a.href);};
 document.getElementById('refreshTrack').onclick=refresh;
+function renderPassState(){const el=document.getElementById('passState');if(el)el.textContent=teacherPass?'✅ 已解鎖，可編輯':'🔒 尚未輸入密碼';}
+document.getElementById('passSet').onclick=()=>{if(askPass('請輸入教師密碼：'))renderPassState();};
+document.getElementById('passOut').onclick=()=>{clearPass();renderPassState();toast('🚪 已登出，此裝置無法再修改');};
 document.getElementById('viewDay').onclick=()=>setView('day');
 document.getElementById('viewWeek').onclick=()=>setView('week');
 document.getElementById('speakBtn').onclick=speakToday;
@@ -749,7 +784,7 @@ function applyParentMode(){
   const cn=document.getElementById('cfgNotice');
   if(!useApi)cn.innerHTML='<div class="notice warn"><span>⚙️</span><span>尚未設定 Google 試算表後端，資料暫存在本機瀏覽器（測試用）。部署 Apps Script 後，把網址填入程式最上方的 <b>API_URL</b>。</span></div>';
   else cn.innerHTML='<div class="notice"><span>☁️</span><span>資料儲存於班級 Google 試算表，多裝置同步。</span></div>';
-  applyParentMode();refresh();
+  applyParentMode();renderPassState();refresh();
   if(location.hash!=='#parent'){var sc=document.createElement('script');sc.src='sortable.min.js';sc.onload=function(){renderLkEdit();};document.head.appendChild(sc);}
 })();
 </script>
