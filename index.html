@@ -345,7 +345,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -461,11 +461,11 @@ async function loadData(date){
 }
 let toastTimer=null;
 function toast(msg,keep){const t=document.getElementById('saveToast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);if(!keep)toastTimer=setTimeout(()=>t.classList.remove('show'),1600);}
-async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':'⚠️ 儲存失敗，請檢查網路');}}
+async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');return true;}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':'⚠️ 儲存失敗，請檢查網路');return false;}}
 let saveQueue=Promise.resolve();
 function enqueue(fn){saveQueue=saveQueue.then(fn,fn);return saveQueue;}
-async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveDay',date,...snapshot});else LS.set('cb:'+date,snapshot);}));}
-async function saveLinks(){const snap=JSON.parse(JSON.stringify(links));return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveLinks',links:snap});else LS.set('cb:links',snap);}));}
+async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveDay',date,...snapshot});if(j&&j.idioms)j.idioms.forEach(si=>{const li=day.idioms.find(x=>x.id===si.id);if(li&&si.photo)li.photo=si.photo;});}else LS.set('cb:'+date,snapshot);}));}
+async function saveLinks(){const snap=JSON.parse(JSON.stringify(links));return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveLinks',links:snap});if(j&&j.links)j.links.forEach(sl=>{const ll=links.find(x=>x.id===sl.id);if(ll&&sl.icon)ll.icon=sl.icon;});}else LS.set('cb:links',snap);}));}
 async function saveRoster(){if(useApi)await apiPost({action:'saveRoster',roster});else LS.set('cb:roster',roster);}
 async function saveAuditDate(date,a){const snap=JSON.parse(JSON.stringify(a));return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveAudit',date,audit:snap});else LS.set('cb:audit:'+date,snap);}));}
 async function saveAudit(){await saveAuditDate(currentDate,audit);}
@@ -633,7 +633,7 @@ function speakToday(){
   const [y,m,d]=currentDate.split('-').map(Number);
   parts.push(`${m}月${d}日，星期${weekday(currentDate)}，今天的功課有：`);
   if(day.homework.length) day.homework.forEach((h,i)=>parts.push(`第${i+1}項，${h.text}。`));
-  else parts.push('等等，今天功課還沒有派送。');
+  else parts.push('今天沒有功課。');
   if(day.idioms.length) day.idioms.forEach(i=>parts.push(`今天的成語是${i.text}。${i.mean||''}`));
   if(day.reminder) parts.push(`老師叮嚀：${day.reminder}`);
   const u=new SpeechSynthesisUtterance(parts.join(''));
@@ -717,12 +717,12 @@ document.getElementById('nextDay').onclick=()=>shift(1);
   const el=document.getElementById(inp);
   if(el)el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById(btn).click();}});
 });
-document.getElementById('hwAdd').onclick=async()=>{const c=hwContent.value.trim();if(!c){alert('請填寫功課項目');return;}day.homework.push({id:uid(),text:c,digital:document.getElementById('hwDigital').checked,zhuyin:{}});await saveDay();hwContent.value='';document.getElementById('hwDigital').checked=false;renderAll();};
+document.getElementById('hwAdd').onclick=async()=>{const c=hwContent.value.trim();if(!c){alert('請填寫功課項目');return;}const item={id:uid(),text:c,digital:document.getElementById('hwDigital').checked,zhuyin:{}};day.homework.push(item);renderAll();const ok=await saveDay();if(ok===false){day.homework=day.homework.filter(x=>x.id!==item.id);renderAll();return;}hwContent.value='';document.getElementById('hwDigital').checked=false;};
 document.getElementById('hwReminder').addEventListener('change',async e=>{day.reminder=e.target.value.trim();await saveDay();renderMain();});
-document.getElementById('idAdd').onclick=async()=>{const t=idText.value.trim(),m=idMean.value.trim(),f=idPhoto.files[0];if(!t){alert('請填寫成語');return;}let photo='';if(f){try{photo=await resizeImage(f);}catch(e){}}day.idioms.push({id:uid(),text:t,mean:m,photo});await saveDay();idText.value='';idMean.value='';idPhoto.value='';renderAll();};
-document.getElementById('lkAdd').onclick=async()=>{const t=lkTitle.value.trim();let u=lkUrl.value.trim();if(!t||!u){alert('請填寫名稱與網址');return;}if(!/^https?:\/\//i.test(u))u='https://'+u;const f=document.getElementById('lkIcon').files[0];let icon='';if(f){try{icon=await resizeImage(f,128,.82);}catch(e){}}links.push({id:uid(),title:t,url:u,icon});await saveLinks();lkTitle.value='';lkUrl.value='';document.getElementById('lkIcon').value='';renderAll();};
-document.body.addEventListener('change',async e=>{const f=e.target.closest('input[data-icon-lk]');if(!f||!f.files[0])return;const l=links.find(x=>x.id===f.dataset.iconLk);if(!l)return;try{l.icon=await resizeImage(f.files[0],128,.82);}catch(err){}await saveLinks();renderAll();});
-document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-toggle-digital],[data-rmicon-lk]');if(!b)return;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);await saveDay();renderAll();}if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);await saveDay();renderAll();}if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);await saveLinks();renderAll();}if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';await saveLinks();renderAll();}}if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;await saveDay();renderAll();}}if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const arr=val.trim().split(/\s+/);h.zhuyin={};arr.forEach((z,i)=>h.zhuyin[i]=z);await saveDay();renderAll();}}});
+document.getElementById('idAdd').onclick=async()=>{const t=idText.value.trim(),m=idMean.value.trim(),f=idPhoto.files[0];if(!t){alert('請填寫成語');return;}let photo='';if(f){try{photo=await resizeImage(f);}catch(e){}}const item={id:uid(),text:t,mean:m,photo};day.idioms.push(item);renderAll();const ok=await saveDay();if(ok===false){day.idioms=day.idioms.filter(x=>x.id!==item.id);renderAll();return;}idText.value='';idMean.value='';idPhoto.value='';};
+document.getElementById('lkAdd').onclick=async()=>{const t=lkTitle.value.trim();let u=lkUrl.value.trim();if(!t||!u){alert('請填寫名稱與網址');return;}if(!/^https?:\/\//i.test(u))u='https://'+u;const f=document.getElementById('lkIcon').files[0];let icon='';if(f){try{icon=await resizeImage(f,128,.82);}catch(e){}}const item={id:uid(),title:t,url:u,icon};links.push(item);renderAll();const ok=await saveLinks();if(ok===false){links=links.filter(x=>x.id!==item.id);renderAll();return;}lkTitle.value='';lkUrl.value='';document.getElementById('lkIcon').value='';};
+document.body.addEventListener('change',async e=>{const f=e.target.closest('input[data-icon-lk]');if(!f||!f.files[0])return;const l=links.find(x=>x.id===f.dataset.iconLk);if(!l)return;const old=l.icon;try{l.icon=await resizeImage(f.files[0],128,.82);}catch(err){return;}renderAll();const ok=await saveLinks();if(ok===false){l.icon=old;renderAll();}});
+document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-toggle-digital],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
 document.getElementById('fsBtn').onclick=()=>{const el=document.getElementById('board');if(!document.fullscreenElement)(el.requestFullscreen||el.webkitRequestFullscreen).call(el);else document.exitFullscreen();};
 document.addEventListener('fullscreenchange',setBoardZoom);
 window.addEventListener('resize',()=>{if(isBoardFs())fitBoard();});
@@ -758,8 +758,8 @@ document.getElementById('copyPrev').onclick=async()=>{
   }
   toast('⚠️ 前七天內找不到功課紀錄');
 };
-document.getElementById('trackTable').addEventListener('change',async e=>{const cb=e.target.closest('.audit');if(!cb)return;const stu=cb.dataset.stu,item=cb.dataset.item;if(!audit[stu])audit[stu]={};if(cb.checked)audit[stu][item]=true;else delete audit[stu][item];await saveAudit();renderTrack();});
-document.getElementById('trackTable').addEventListener('click',async e=>{const b=e.target.closest('.exempt');if(!b)return;const stu=b.dataset.stu,item=b.dataset.item;if(audit[stu])delete audit[stu][item];await saveAudit();renderTrack();});
+document.getElementById('trackTable').addEventListener('change',async e=>{const cb=e.target.closest('.audit');if(!cb)return;const stu=cb.dataset.stu,item=cb.dataset.item;if(!audit[stu])audit[stu]={};if(cb.checked)audit[stu][item]=true;else delete audit[stu][item];const ok=await saveAudit();renderTrack();if(ok===false)refresh({silent:true});});
+document.getElementById('trackTable').addEventListener('click',async e=>{const b=e.target.closest('.exempt');if(!b)return;const stu=b.dataset.stu,item=b.dataset.item;if(audit[stu])delete audit[stu][item];const ok=await saveAudit();renderTrack();if(ok===false)refresh({silent:true});});
 document.getElementById('importOnline').onclick=async()=>{roster.forEach(name=>{const on=matchOnline(name);if(on&&on.done){audit[name]=audit[name]||{};Object.keys(on.done).forEach(id=>{if(on.done[id])audit[name][id]=true;});}});await saveAudit();renderTrack();};
 document.getElementById('dashRefresh').onclick=loadDashboard;
 async function resolveDash(date,stu,item,value){const d=(dash.days||[]).find(x=>x.date===date);if(!d)return;d.audit=d.audit||{};d.audit[stu]=d.audit[stu]||{};d.audit[stu][item]=value;await saveAuditDate(date,d.audit);if(date===currentDate){audit=d.audit;renderTrack();}renderDashboard();}
