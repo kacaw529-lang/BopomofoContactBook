@@ -88,7 +88,7 @@
   .vidiom{display:flex;flex-direction:row-reverse;gap:14px;align-items:flex-start}
   .vcol.idiom-word{font-size:clamp(26px,5vw,40px)}
   .vcol.idiom-mean{font-size:clamp(18px,3.2vw,26px);color:var(--chalk-soft);white-space:normal;max-height:340px}
-  .vidiom img{width:108px;height:108px;object-fit:cover;border-radius:10px;border:3px solid rgba(243,239,226,.5);align-self:flex-start}
+  .vidiom img{width:180px;height:180px;object-fit:cover;border-radius:12px;border:3px solid rgba(243,239,226,.5);align-self:flex-start}
 
   .link-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:14px;justify-items:center}
   @media(min-width:600px){.link-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:20px}}
@@ -166,6 +166,7 @@
   .board:fullscreen .vcol.reminder{font-size:4.6vh}
   .board:fullscreen .vcol.idiom-word{font-size:7vh}
   .board:fullscreen .vcol.idiom-mean{font-size:4.2vh;max-height:80vh}
+  .board:fullscreen .vidiom img{width:30vh;height:30vh}
   @media(max-width:520px){
     body{padding:10px 8px 60px}
     h1.title{font-size:22px}
@@ -181,7 +182,9 @@
 <body>
 <div class="wrap">
   <header class="app-head">
+    <span class="badge">✦ 三年級數位聯絡簿 ✦</span>
     <h1 class="title">班級黑板 · <b>電子聯絡簿</b></h1>
+    <p class="subtitle">直排注音 · 投影抄寫 · 家長手機可繳交</p>
   </header>
   <div id="cfgNotice"></div>
   <div class="datebar">
@@ -285,7 +288,7 @@
         <div class="vboard" id="vboard"><div class="spin">載入中…</div></div>
       </div>
     </div>
-    <p class="hint" id="boardHint" style="text-align:center"></p>
+    <p class="hint" id="boardHint" style="text-align:center">直排由右而左，貼近國語課本；投影時按全螢幕字會放大、內容靠右起排。</p>
 
     <div class="card">
       <h2>🔗 常用連結</h2>
@@ -337,13 +340,13 @@
     </div>
   </section>
 
-  <footer></footer>
+  <footer>專為班級經營與每日溝通設計 · 讓聯絡簿更清楚，讓教學更省力</footer>
 </div>
 <div id="saveToast">☁️ 已儲存</div>
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -629,13 +632,13 @@ function speakToday(){
   if(sp.speaking){sp.cancel();toast('🔇 已停止朗讀');return;}
   const parts=[];
   const [y,m,d]=currentDate.split('-').map(Number);
-  parts.push(`${m}月${d}日，星期${weekday(currentDate)}，今天的功課：`);
+  parts.push(`${m}月${d}日，星期${weekday(currentDate)}，今天的功課有：`);
   if(day.homework.length) day.homework.forEach((h,i)=>parts.push(`第${i+1}項，${h.text}。`));
-  else parts.push('還沒有公布。');
+  else parts.push('今天沒有功課。');
   if(day.idioms.length) day.idioms.forEach(i=>parts.push(`今天的成語是${i.text}。${i.mean||''}`));
   if(day.reminder) parts.push(`老師叮嚀：${day.reminder}`);
   const u=new SpeechSynthesisUtterance(parts.join(''));
-  u.lang='zh-TW'; u.rate=0.9;                    // 放慢，適合三年級跟讀
+  u.lang='zh-TW'; u.rate=0.85;                    // 放慢，適合三年級跟讀
   u.onend=()=>toast('✅ 朗讀完畢');
   sp.cancel(); sp.speak(u); toast('🔊 朗讀中…（再按一次可停止）');
 }
