@@ -346,7 +346,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -479,18 +479,29 @@ let templates=(()=>{try{return LS.get('cb:templates')||[];}catch(e){return [];}}
 let zoom=(()=>{try{return parseFloat(localStorage.getItem('cb:zoom'))||1;}catch(e){return 1;}})();
 function isBoardFs(){return document.fullscreenElement===document.getElementById('board');}
 function applyZoom(){const v=document.getElementById('vboard');if(v)v.style.zoom=zoom;const l=document.getElementById('zoomLabel');if(l)l.textContent=Math.round(zoom*100)+'%';try{localStorage.setItem('cb:zoom',zoom);}catch(e){}}
+function clearIdiomImgSize(){const v=document.getElementById('vboard');if(v)v.querySelectorAll('.vidiom img').forEach(im=>{im.style.width='';im.style.height='';});}
 function fitBoard(){
   const board=document.getElementById('board'),v=document.getElementById('vboard');if(!board||!v)return;
+  clearIdiomImgSize();
   v.style.zoom=1;
   requestAnimationFrame(()=>{
     const cs=getComputedStyle(board);
     const aw=board.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
     const ah=board.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+    // 單張成語圖：自動放大填滿左側剩餘空間（正方形）
+    const imgs=v.querySelectorAll('.vidiom img');
+    if(imgs.length===1){
+      const img=imgs[0];
+      const others=v.scrollWidth-img.offsetWidth;         // 圖以外的內容寬度（含間距）
+      let target=Math.min(aw-others-16, ah);              // 可用寬(扣其他內容)與可用高取小，留邊距
+      target=Math.max(target, img.offsetWidth);           // 不小於基準尺寸
+      if(target>40){ img.style.width=target+'px'; img.style.height=target+'px'; }
+    }
     const sw=v.scrollWidth,sh=v.scrollHeight;
     if(sw>0&&sh>0){ v.style.zoom=Math.min(1, aw/sw, ah/sh); }
   });
 }
-function setBoardZoom(){ if(isBoardFs()) fitBoard(); else applyZoom(); }
+function setBoardZoom(){ clearIdiomImgSize(); if(isBoardFs()) fitBoard(); else applyZoom(); }
 function todayISO(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
 const WD=['日','一','二','三','四','五','六'];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
