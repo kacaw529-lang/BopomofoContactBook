@@ -346,7 +346,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -522,26 +522,28 @@ const CK=d=>'cb:cache:'+d;
 function readCache(date){try{const c=LS.get(CK(date));return (c&&c.data)?c:null;}catch(e){return null;}}
 function writeCache(date,data){try{LS.set(CK(date),{t:Date.now(),data});}catch(e){}}
 
+let loadToken=0;
 async function refresh(opts){
+  const token=++loadToken;
   const date=currentDate,silent=opts&&opts.silent;
   if(!silent){
     const c=readCache(date);
-    if(c){ applyData(c.data); renderAll(); }        // 先用快取立即呈現
-    else { setLoading(true); }                       // 無快取才顯示載入中
+    if(c){ if(token!==loadToken)return; applyData(c.data); renderAll(); }  // 先用快取立即呈現
+    else { setLoading(true); }                                             // 無快取才顯示載入中
   }
   try{
     const d=await loadData(date);
-    if(date!==currentDate) return;                   // 期間切換過日期就丟棄
+    if(token!==loadToken) return;                    // 只採用最新一次載入，舊的一律丟棄
     applyData(d); writeCache(date,d); setLoading(false); renderAll();
   }catch(e){
+    if(token!==loadToken) return;
     setLoading(false);
     if(!readCache(date)) renderAll();
   }
 }
 function setLoading(on){
   const v=document.getElementById('vboard');
-  if(on&&v&&!v.dataset.loaded) v.innerHTML='<div class="spin">載入中…</div>';
-  if(!on&&v) v.dataset.loaded='1';
+  if(on&&v) v.innerHTML='<div class="spin">載入中…</div>';
 }
 
 /* ============ 渲染：黑板 ============ */
