@@ -346,7 +346,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -696,7 +696,12 @@ async function loadRangeData(from,to){
 }
 function computeOutstanding(){
   const out=[],list=(dash.roster&&dash.roster.length)?dash.roster:roster;
-  (dash.days||[]).forEach(d=>{const items=d.homework||[];list.forEach(stu=>{const a=(d.audit&&d.audit[stu])||{};items.forEach(it=>{if(!a[it.id])out.push({date:d.date,student:stu,itemId:it.id,text:it.text});});});});
+  const today=todayISO();
+  (dash.days||[]).forEach(d=>{
+    if(d.date>=today) return;                       // 當天(及未來)作業仍在繳交期間，不列入未補繳
+    const items=d.homework||[];
+    list.forEach(stu=>{const a=(d.audit&&d.audit[stu])||{};items.forEach(it=>{if(!a[it.id])out.push({date:d.date,student:stu,itemId:it.id,text:it.text});});});
+  });
   return out;
 }
 async function loadDashboard(){
@@ -711,7 +716,7 @@ function renderDashboard(){
   if(!out.length){st.innerHTML='<span class="stat" style="background:#eef6f1;border-color:var(--accent2);color:#2f6b50">這段期間沒有未補繳的作業 🎉</span>';tbl.innerHTML='';return;}
   out.sort((a,b)=>String(a.student).localeCompare(String(b.student),'zh-Hant')||a.date.localeCompare(b.date));
   const studs=new Set(out.map(o=>o.student));
-  st.innerHTML=`<span class="stat" style="background:#fbeae6;border-color:#eecabf;color:#9a4a36">未補繳 ${out.length} 筆</span><span class="stat">涉及 ${studs.size} 位學生</span>`;
+  st.innerHTML=`<span class="stat" style="background:#fbeae6;border-color:#eecabf;color:#9a4a36">未補繳 ${out.length} 筆</span><span class="stat">涉及 ${studs.size} 位學生</span> <button class="btn btn-add" id="dashAllDone" style="min-height:34px;padding:6px 14px;font-size:13px">✅ 全部標記補繳完成</button><div class="hint" style="margin-top:6px">當天出的作業仍在繳交期間，不列入未補繳；隔天起才會出現。</div>`;
   let head='<tr><th>學生</th><th>日期</th><th>未繳作業</th><th>補繳完成</th><th>免繳</th></tr>';
   let rows=out.map(o=>`<tr><td class="name">${esc(o.student)}</td><td>${esc(dateShort(o.date))}</td><td>${esc(o.text)}</td><td><input type="checkbox" class="dashck" data-date="${o.date}" data-stu="${esc(o.student)}" data-item="${o.itemId}"></td><td><button class="exbtn" data-date="${o.date}" data-stu="${esc(o.student)}" data-item="${o.itemId}">免繳</button></td></tr>`).join('');
   tbl.innerHTML=head+rows;
@@ -779,6 +784,26 @@ document.getElementById('dashRefresh').onclick=loadDashboard;
 async function resolveDash(date,stu,item,value){const d=(dash.days||[]).find(x=>x.date===date);if(!d)return;d.audit=d.audit||{};d.audit[stu]=d.audit[stu]||{};d.audit[stu][item]=value;await saveAuditDate(date,d.audit);if(date===currentDate){audit=d.audit;renderTrack();}renderDashboard();}
 document.getElementById('dashTable').addEventListener('change',async e=>{const cb=e.target.closest('.dashck');if(!cb)return;cb.disabled=true;await resolveDash(cb.dataset.date,cb.dataset.stu,cb.dataset.item,true);});
 document.getElementById('dashTable').addEventListener('click',async e=>{const b=e.target.closest('.exbtn');if(!b)return;b.disabled=true;await resolveDash(b.dataset.date,b.dataset.stu,b.dataset.item,'exempt');});
+document.getElementById('dashStats').addEventListener('click',async e=>{
+  if(!e.target.closest('#dashAllDone'))return;
+  const out=computeOutstanding();if(!out.length)return;
+  if(!confirm('確定把清單上全部 '+out.length+' 筆都標記為補繳完成？'))return;
+  const btn=e.target.closest('#dashAllDone');btn.disabled=true;btn.textContent='處理中…';
+  // 依日期分組，套進各日 audit，每個日期只儲存一次
+  const byDate={};
+  out.forEach(o=>{(byDate[o.date]=byDate[o.date]||[]).push(o);});
+  let okAll=true;
+  for(const date of Object.keys(byDate)){
+    const d=(dash.days||[]).find(x=>x.date===date);if(!d)continue;
+    d.audit=d.audit||{};
+    byDate[date].forEach(o=>{d.audit[o.student]=d.audit[o.student]||{};d.audit[o.student][o.itemId]=true;});
+    const ok=await saveAuditDate(date,d.audit);
+    if(ok===false)okAll=false;
+    if(date===currentDate){audit=d.audit;renderTrack();}
+  }
+  toast(okAll?'✅ 已全部標記補繳完成':'⚠️ 部分未成功，請重新查詢確認');
+  renderDashboard();
+});
 document.getElementById('copyParentLink').onclick=async()=>{const url=location.href.split('#')[0]+'#parent';const m=document.getElementById('copyMsg');try{await navigator.clipboard.writeText(url);m.textContent='✓ 已複製';}catch(e){m.textContent='請手動複製：'+url;}};
 function applyParentMode(){
   if(location.hash==='#parent'){
