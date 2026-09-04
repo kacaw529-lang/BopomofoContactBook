@@ -420,9 +420,21 @@ function rubyHTML(text, override){
   return out;
 }
 const plainZhuyin=text=>ZH.annotate(text).filter(u=>u.zhuyin).map(u=>u.zhuyin).join(' ');
-function mergeZh(h){
-  const units=ZH.annotate(h.text).filter(u=>u.zhuyin!==null);
-  return units.map((u,i)=>(h.zhuyin&&h.zhuyin[i])?h.zhuyin[i]:u.zhuyin).join(' ');
+function mergeZhFor(text,override){
+  const units=ZH.annotate(text).filter(u=>u.zhuyin!==null);
+  return units.map((u,i)=>(override&&override[i])?override[i]:u.zhuyin).join(' ');
+}
+function mergeZh(h){return mergeZhFor(h.text,h.zhuyin);}
+// 解析注音輸入：支援「字=注音」個別修改，或整串以空白分隔
+function parseZhInput(text,input,existing){
+  input=(input||'').trim();
+  const units=ZH.annotate(text).filter(u=>u.zhuyin!==null);
+  if(input.indexOf('=')>=0){
+    const ov=Object.assign({},existing||{});
+    input.split(/[\s,，、]+/).forEach(tok=>{const p=tok.split('=');if(p.length===2&&p[0]&&p[1]){const ch=p[0].trim(),zh=p[1].trim();units.forEach((u,idx)=>{if(u.ch===ch)ov[idx]=zh;});}});
+    return ov;
+  }
+  const ov={},arr=input.split(/\s+/);arr.forEach((z,i)=>{if(z)ov[i]=z;});return ov;
 }
 
 /* ============ 數字轉中文 ============ */
@@ -554,7 +566,7 @@ function buildVColumns(target,withReminder){
   }else cols+=`<div class="vcol" style="opacity:.6">${rubyHTML('今日尚未填寫功課')}</div>`;
   if(withReminder&&day.reminder) cols+=`<div class="vsep"></div><div class="vcol reminder">${rubyHTML('叮嚀：'+day.reminder)}</div>`;
   if(day.idioms.length){
-    cols+=`<div class="vsep"></div>`+day.idioms.map(i=>`<div class="vidiom"><div class="vcol idiom-word">${rubyHTML(i.text)}</div>${i.mean?`<div class="vcol idiom-mean">${rubyHTML(i.mean)}</div>`:''}${i.photo?`<img src="${esc(driveImg(i.photo))}" alt="${esc(i.text)}">`:''}</div>`).join('');
+    cols+=`<div class="vsep"></div>`+day.idioms.map(i=>`<div class="vidiom"><div class="vcol idiom-word">${rubyHTML(i.text,i.zhuyin)}</div>${i.mean?`<div class="vcol idiom-mean">${rubyHTML(i.mean,i.zhuyinMean)}</div>`:''}${i.photo?`<img src="${esc(driveImg(i.photo))}" alt="${esc(i.text)}">`:''}</div>`).join('');
   }
   target.innerHTML=cols;
 }
@@ -567,7 +579,7 @@ function renderHwList(){
 }
 function renderIdList(){
   const el=document.getElementById('idList');
-  el.innerHTML=day.idioms.length?day.idioms.map(i=>`<div class="item">${i.photo?`<img class="thumb" src="${esc(driveImg(i.photo))}">`:''}<div class="body"><span class="subj">${esc(i.text)}</span> <span class="zh">${esc(plainZhuyin(i.text))}</span><div>${esc(i.mean||'')}</div></div><button class="del" data-del-id="${i.id}">✕</button></div>`).join(''):'<div class="empty">尚未新增成語</div>';
+  el.innerHTML=day.idioms.length?day.idioms.map(i=>`<div class="item">${i.photo?`<img class="thumb" src="${esc(driveImg(i.photo))}">`:''}<div class="body"><span class="subj">${esc(i.text)}</span> <span class="zh" data-edit-idzh="${i.id}" title="點我修改成語注音">注音：${esc(mergeZhFor(i.text,i.zhuyin))} ✎</span>${i.mean?`<div style="margin-top:2px">${esc(i.mean)}</div><span class="zh" data-edit-idmean="${i.id}" title="點我修改解釋注音">解釋注音：${esc(mergeZhFor(i.mean,i.zhuyinMean))} ✎</span>`:''}</div><button class="del" data-del-id="${i.id}">✕</button></div>`).join(''):'<div class="empty">尚未新增成語</div>';
 }
 let lkSortable=null;
 function renderLkEdit(){
@@ -741,7 +753,7 @@ document.getElementById('hwReminder').addEventListener('change',async e=>{day.re
 document.getElementById('idAdd').onclick=async()=>{const t=idText.value.trim(),m=idMean.value.trim(),f=idPhoto.files[0];if(!t){alert('請填寫成語');return;}let photo='';if(f){try{photo=await resizeImage(f);}catch(e){}}const item={id:uid(),text:t,mean:m,photo};day.idioms.push(item);renderAll();const ok=await saveDay();if(ok===false){day.idioms=day.idioms.filter(x=>x.id!==item.id);renderAll();return;}idText.value='';idMean.value='';idPhoto.value='';};
 document.getElementById('lkAdd').onclick=async()=>{const t=lkTitle.value.trim();let u=lkUrl.value.trim();if(!t||!u){alert('請填寫名稱與網址');return;}if(!/^https?:\/\//i.test(u))u='https://'+u;const f=document.getElementById('lkIcon').files[0];let icon='';if(f){try{icon=await resizeImage(f,128,.82);}catch(e){}}const item={id:uid(),title:t,url:u,icon};links.push(item);renderAll();const ok=await saveLinks();if(ok===false){links=links.filter(x=>x.id!==item.id);renderAll();return;}lkTitle.value='';lkUrl.value='';document.getElementById('lkIcon').value='';};
 document.body.addEventListener('change',async e=>{const f=e.target.closest('input[data-icon-lk]');if(!f||!f.files[0])return;const l=links.find(x=>x.id===f.dataset.iconLk);if(!l)return;const old=l.icon;try{l.icon=await resizeImage(f.files[0],128,.82);}catch(err){return;}renderAll();const ok=await saveLinks();if(ok===false){l.icon=old;renderAll();}});
-document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-toggle-digital],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
+document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-edit-idzh],[data-edit-idmean],[data-toggle-digital],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}else if(b.dataset.editIdzh){const it=day.idioms.find(x=>x.id===b.dataset.editIdzh);if(!it)return;const val=prompt('修改成語注音（以空白分隔每個字）：',mergeZhFor(it.text,it.zhuyin));if(val!==null){it.zhuyin=parseZhInput(it.text,val,it.zhuyin);renderAll();ok=await saveDay();}}else if(b.dataset.editIdmean){const it=day.idioms.find(x=>x.id===b.dataset.editIdmean);if(!it)return;const val=prompt('修改解釋注音：\n・只改個別字：輸入「字=注音」，例 於=ㄩˊ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(it.mean,it.zhuyinMean));if(val!==null){it.zhuyinMean=parseZhInput(it.mean,val,it.zhuyinMean);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
 document.getElementById('fsBtn').onclick=()=>{const el=document.getElementById('board');if(!document.fullscreenElement)(el.requestFullscreen||el.webkitRequestFullscreen).call(el);else document.exitFullscreen();};
 document.addEventListener('fullscreenchange',setBoardZoom);
 window.addEventListener('resize',()=>{if(isBoardFs())fitBoard();});
