@@ -159,6 +159,13 @@
   .dbadge{display:inline-block;margin-left:8px;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;cursor:pointer;border:1px solid var(--line)}
   .dbadge.on{background:#fdf0e6;color:var(--accent);border-color:#f0cdb0}
   .dbadge.off{background:#f3f5f2;color:var(--muted)}
+  .rec-ui{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .rec-time{font-weight:800;color:var(--accent2);font-variant-numeric:tabular-nums;font-size:16px}
+  .rec-ui .rec-dot{width:12px;height:12px;border-radius:50%;background:#c2553f;display:inline-block;animation:recblink 1s infinite}
+  @keyframes recblink{50%{opacity:.25}}
+  /* 錄音專用頁：只保留錄音繳交 */
+  body.record-mode .board-outer,body.record-mode .viewbar,body.record-mode .zoombar,body.record-mode #weekWrap,body.record-mode #boardHint,body.record-mode #panel-main>.card:not(#submitCard),body.record-mode #subChecks{display:none}
+  body.record-mode #submitCard h2::after{content:'';}
   footer{text-align:center;color:var(--muted);font-size:12.5px;margin-top:22px}
   .board:fullscreen{align-items:center;justify-content:flex-end;padding:3vh 3vw}
   .board:fullscreen .vboard{min-height:auto}
@@ -209,9 +216,10 @@
       <div class="row">
         <div class="field"><label>功課項目（直接寫整行，如：國語生字語詞）</label><input type="text" id="hwContent" placeholder="國語生字語詞"></div>
         <label class="dchk" title="勾選後，此項才會開放家長／學生線上繳交"><input type="checkbox" id="hwDigital"> 數位作業</label>
+        <label class="dchk" title="勾選後，家長端會出現麥克風錄音繳交"><input type="checkbox" id="hwRecord"> 🎙 錄音作業</label>
         <button class="btn btn-add" id="hwAdd">＋ 新增</button>
       </div>
-      <p class="hint">注音自動產生（破音字與台灣讀音已處理）。若有錯，點清單裡的「注音 ✎」可手動修改。勾「數位作業」的項目才會出現在聯絡簿的數位作業繳交區。</p>
+      <p class="hint">注音自動產生（破音字與台灣讀音已處理）。若有錯，點清單裡的「注音 ✎」可手動修改。勾「數位作業」會開放線上繳交；勾「錄音作業」會在家長端出現麥克風錄音（如國語朗讀）。</p>
       <div id="hwList"></div>
       <div class="tpl-box">
         <div class="tpl-head">
@@ -252,6 +260,7 @@
       <h2>📨 給家長的連結</h2>
       <p class="hint" style="margin-top:0">複製此連結貼到班級群組。家長開啟後只看得到「聯絡簿」這一頁（含投影內容、連結與作業繳交），看不到編輯與登記表。</p>
       <button class="btn btn-orange" id="copyParentLink" style="margin-top:8px">📋 複製家長連結</button>
+      <button class="btn btn-ghost" id="copyRecordLink" style="margin-top:8px">🎙 複製錄音頁連結</button>
       <span id="copyMsg" class="hint"></span>
     </div>
 
@@ -300,6 +309,20 @@
       <p class="hint" style="margin-top:0">完成作業後，填寫姓名、勾選已完成的項目送出。</p>
       <div class="field" style="max-width:240px;margin-top:6px"><label>學生姓名（座號＋姓名）</label><input type="text" id="subName" placeholder="12 王小明"></div>
       <div class="check-list" id="subChecks"></div>
+      <div id="recBlock" style="display:none;margin:6px 0 10px">
+        <label style="font-size:12.5px;color:var(--muted);font-weight:600">🎙 朗讀錄音（<span id="recTaskName"></span>）</label>
+        <div class="rec-ui">
+          <button type="button" class="btn btn-orange" id="recStartBtn">🎤 開始錄音</button>
+          <button type="button" class="btn" id="recStopBtn" style="display:none;background:#c2553f;color:#fff">⏹ 停止</button>
+          <span id="recTime" class="rec-time">00:00</span>
+          <span id="recSize" class="hint" style="margin:0"></span>
+        </div>
+        <div id="recPreview" style="display:none;margin-top:8px">
+          <audio id="recAudio" controls style="max-width:100%;vertical-align:middle"></audio>
+          <button type="button" class="btn btn-ghost" id="recRedoBtn" style="margin-left:8px">🔄 重錄</button>
+        </div>
+        <p class="hint" style="margin-top:6px">最長 60 秒，時間到會自動停止。需允許麥克風權限。</p>
+      </div>
       <div class="row">
         <div class="field"><label>想跟老師說的話（選填）</label><input type="text" id="subNote" placeholder="習作第3題不太懂"></div>
         <div class="field"><label>作業照片（選填）</label><input type="file" id="subPhoto" accept="image/*"></div>
@@ -346,7 +369,7 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -574,7 +597,7 @@ function buildVColumns(target,withReminder){
 /* ============ 渲染：老師清單 ============ */
 function renderHwList(){
   const el=document.getElementById('hwList');
-  el.innerHTML=day.homework.length?day.homework.map(h=>`<div class="item"><div class="body">${esc(h.text)}<span class="dbadge ${h.digital?'on':'off'}" data-toggle-digital="${h.id}" title="切換是否開放線上繳交">${h.digital?'📱 數位作業':'設為數位'}</span><div class="zh" data-edit-zh="${h.id}" title="點我修改注音">注音：${esc((h.zhuyin&&Object.keys(h.zhuyin).length)?mergeZh(h):plainZhuyin(h.text))} ✎</div></div><button class="del" data-del-hw="${h.id}">✕</button></div>`).join(''):'<div class="empty">尚未新增功課</div>';
+  el.innerHTML=day.homework.length?day.homework.map(h=>`<div class="item"><div class="body">${esc(h.text)}<span class="dbadge ${h.digital?'on':'off'}" data-toggle-digital="${h.id}" title="切換是否開放線上繳交">${h.digital?'📱 數位作業':'設為數位'}</span><span class="dbadge ${h.record?'on':'off'}" data-toggle-record="${h.id}" title="切換是否開放麥克風錄音">${h.record?'🎙 錄音作業':'設為錄音'}</span><div class="zh" data-edit-zh="${h.id}" title="點我修改注音">注音：${esc((h.zhuyin&&Object.keys(h.zhuyin).length)?mergeZh(h):plainZhuyin(h.text))} ✎</div></div><button class="del" data-del-hw="${h.id}">✕</button></div>`).join(''):'<div class="empty">尚未新增功課</div>';
   const r=document.getElementById('hwReminder'); if(r&&document.activeElement!==r) r.value=day.reminder||'';
 }
 function renderIdList(){
@@ -602,10 +625,17 @@ function renderMain(){
   const pl=document.getElementById('mainLinks');
   pl.innerHTML=links.length?links.map(l=>`<a class="link-tile" href="${esc(l.url)}" target="_blank" rel="noopener"><div class="lt-ic">${l.icon?`<img src="${esc(driveImg(l.icon))}" alt="">`:'🔗'}</div><span class="lt">${esc(l.title)}</span><span class="lu">${esc(l.url)}</span></a>`).join(''):'<div class="empty">尚未新增連結</div>';
   const digitalItems=day.homework.filter(h=>h.digital);
-  const card=document.getElementById('submitCard');if(card)card.style.display=digitalItems.length?'':'none';
+  const recordItems=day.homework.filter(h=>h.record);
+  const card=document.getElementById('submitCard');if(card)card.style.display=(digitalItems.length||recordItems.length)?'':'none';
   const box=document.getElementById('subChecks');
-  box.innerHTML=digitalItems.length?digitalItems.map(h=>`<label class="check"><input type="checkbox" data-hwid="${h.id}"><span>${esc(h.text)}</span></label>`).join(''):'<div class="empty">今日無數位作業</div>';
+  box.innerHTML=digitalItems.length?digitalItems.map(h=>`<label class="check"><input type="checkbox" data-hwid="${h.id}"><span>${esc(h.text)}</span></label>`).join(''):(recordItems.length?'':'<div class="empty">今日無數位作業</div>');
   box.querySelectorAll('.check input').forEach(cb=>cb.addEventListener('change',e=>e.target.closest('.check').classList.toggle('done',e.target.checked)));
+  // 錄音介面
+  const recBlock=document.getElementById('recBlock');
+  if(recBlock){
+    if(recordItems.length){recBlock.style.display='';document.getElementById('recTaskName').textContent=recordItems.map(h=>h.text).join('、');}
+    else recBlock.style.display='none';
+  }
 }
 
 /* ============ 渲染：稽核登記表 ============ */
@@ -685,7 +715,7 @@ function renderTrack(){
       if(v===true){done++;return `<td><input type="checkbox" class="audit" data-stu="${esc(name)}" data-item="${i.id}" checked></td>`;}
       if(v==='exempt'){exempt++;return `<td><span class="exempt" data-stu="${esc(name)}" data-item="${i.id}" title="免繳（點此取消）">免</span></td>`;}
       return `<td><input type="checkbox" class="audit" data-stu="${esc(name)}" data-item="${i.id}"></td>`;}).join('');
-    return `<tr><td class="name">${esc(name)}${on?(on.photo?` <a href="${esc(driveImg(on.photo))}" target="_blank" rel="noopener" title="檢視線上繳交照片">📷</a>`:' <span title="已線上送出">🟢</span>'):''}</td>${cells}<td><b>${done}/${items.length}</b>${exempt?` <span class="exempt-mini">免${exempt}</span>`:''}</td></tr>`;
+    return `<tr><td class="name">${esc(name)}${on?(on.photo?` <a href="${esc(driveImg(on.photo))}" target="_blank" rel="noopener" title="檢視線上繳交照片">📷</a>`:' <span title="已線上送出">🟢</span>'):''}${on&&on.audio?` <a href="${esc(on.audio)}" target="_blank" rel="noopener" title="播放繳交錄音">🎙</a>`:''}</td>${cells}<td><b>${done}/${items.length}</b>${exempt?` <span class="exempt-mini">免${exempt}</span>`:''}</td></tr>`;
   }).join('');
   tbl.innerHTML=head+rows;
   const per=items.map(i=>roster.filter(n=>rosterAudit(n)[i.id]===true).length);
@@ -748,18 +778,65 @@ document.getElementById('nextDay').onclick=()=>shift(1);
   const el=document.getElementById(inp);
   if(el)el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById(btn).click();}});
 });
-document.getElementById('hwAdd').onclick=async()=>{const c=hwContent.value.trim();if(!c){alert('請填寫功課項目');return;}const item={id:uid(),text:c,digital:document.getElementById('hwDigital').checked,zhuyin:{}};day.homework.push(item);renderAll();const ok=await saveDay();if(ok===false){day.homework=day.homework.filter(x=>x.id!==item.id);renderAll();return;}hwContent.value='';document.getElementById('hwDigital').checked=false;};
+document.getElementById('hwAdd').onclick=async()=>{const c=hwContent.value.trim();if(!c){alert('請填寫功課項目');return;}const item={id:uid(),text:c,digital:document.getElementById('hwDigital').checked,record:document.getElementById('hwRecord').checked,zhuyin:{}};day.homework.push(item);renderAll();const ok=await saveDay();if(ok===false){day.homework=day.homework.filter(x=>x.id!==item.id);renderAll();return;}hwContent.value='';document.getElementById('hwDigital').checked=false;document.getElementById('hwRecord').checked=false;};
 document.getElementById('hwReminder').addEventListener('change',async e=>{day.reminder=e.target.value.trim();await saveDay();renderMain();});
 document.getElementById('idAdd').onclick=async()=>{const t=idText.value.trim(),m=idMean.value.trim(),f=idPhoto.files[0];if(!t){alert('請填寫成語');return;}let photo='';if(f){try{photo=await resizeImage(f);}catch(e){}}const item={id:uid(),text:t,mean:m,photo};day.idioms.push(item);renderAll();const ok=await saveDay();if(ok===false){day.idioms=day.idioms.filter(x=>x.id!==item.id);renderAll();return;}idText.value='';idMean.value='';idPhoto.value='';};
 document.getElementById('lkAdd').onclick=async()=>{const t=lkTitle.value.trim();let u=lkUrl.value.trim();if(!t||!u){alert('請填寫名稱與網址');return;}if(!/^https?:\/\//i.test(u))u='https://'+u;const f=document.getElementById('lkIcon').files[0];let icon='';if(f){try{icon=await resizeImage(f,128,.82);}catch(e){}}const item={id:uid(),title:t,url:u,icon};links.push(item);renderAll();const ok=await saveLinks();if(ok===false){links=links.filter(x=>x.id!==item.id);renderAll();return;}lkTitle.value='';lkUrl.value='';document.getElementById('lkIcon').value='';};
 document.body.addEventListener('change',async e=>{const f=e.target.closest('input[data-icon-lk]');if(!f||!f.files[0])return;const l=links.find(x=>x.id===f.dataset.iconLk);if(!l)return;const old=l.icon;try{l.icon=await resizeImage(f.files[0],128,.82);}catch(err){return;}renderAll();const ok=await saveLinks();if(ok===false){l.icon=old;renderAll();}});
-document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-edit-idzh],[data-edit-idmean],[data-toggle-digital],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}else if(b.dataset.editIdzh){const it=day.idioms.find(x=>x.id===b.dataset.editIdzh);if(!it)return;const val=prompt('修改成語注音（以空白分隔每個字）：',mergeZhFor(it.text,it.zhuyin));if(val!==null){it.zhuyin=parseZhInput(it.text,val,it.zhuyin);renderAll();ok=await saveDay();}}else if(b.dataset.editIdmean){const it=day.idioms.find(x=>x.id===b.dataset.editIdmean);if(!it)return;const val=prompt('修改解釋注音：\n・只改個別字：輸入「字=注音」，例 於=ㄩˊ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(it.mean,it.zhuyinMean));if(val!==null){it.zhuyinMean=parseZhInput(it.mean,val,it.zhuyinMean);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
+document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-edit-idzh],[data-edit-idmean],[data-toggle-digital],[data-toggle-record],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.toggleRecord){const h=day.homework.find(x=>x.id===b.dataset.toggleRecord);if(h){h.record=!h.record;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}else if(b.dataset.editIdzh){const it=day.idioms.find(x=>x.id===b.dataset.editIdzh);if(!it)return;const val=prompt('修改成語注音（以空白分隔每個字）：',mergeZhFor(it.text,it.zhuyin));if(val!==null){it.zhuyin=parseZhInput(it.text,val,it.zhuyin);renderAll();ok=await saveDay();}}else if(b.dataset.editIdmean){const it=day.idioms.find(x=>x.id===b.dataset.editIdmean);if(!it)return;const val=prompt('修改解釋注音：\n・只改個別字：輸入「字=注音」，例 於=ㄩˊ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(it.mean,it.zhuyinMean));if(val!==null){it.zhuyinMean=parseZhInput(it.mean,val,it.zhuyinMean);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
 document.getElementById('fsBtn').onclick=()=>{const el=document.getElementById('board');if(!document.fullscreenElement)(el.requestFullscreen||el.webkitRequestFullscreen).call(el);else document.exitFullscreen();};
 document.addEventListener('fullscreenchange',setBoardZoom);
 window.addEventListener('resize',()=>{if(isBoardFs())fitBoard();});
 document.getElementById('zoomIn').onclick=()=>{zoom=Math.min(2.5,Math.round((zoom+0.1)*10)/10);applyZoom();};
 document.getElementById('zoomOut').onclick=()=>{zoom=Math.max(0.6,Math.round((zoom-0.1)*10)/10);applyZoom();};
-document.getElementById('subSend').onclick=async()=>{const name=subName.value.trim();if(!name){alert('請先填寫姓名');return;}const done={};document.querySelectorAll('#subChecks .check input:checked').forEach(cb=>done[cb.dataset.hwid]=true);const note=subNote.value.trim();const f=subPhoto.files[0];let photo='';if(f){try{photo=await resizeImage(f,900,.7);}catch(e){}}const btn=document.getElementById('subSend');btn.disabled=true;try{await submitWork({student:name,done,note,photo});}catch(e){}btn.disabled=false;document.getElementById('subConfirm').innerHTML='<div class="confirm">✅ '+esc(name)+'，已收到繳交紀錄！</div>';subName.value='';subNote.value='';subPhoto.value='';document.querySelectorAll('#subChecks .check').forEach(c=>{c.classList.remove('done');c.querySelector('input').checked=false;});if(!useApi)refresh();};
+/* ============ 錄音引擎（MediaRecorder） ============ */
+let mediaRec=null,recChunks=[],recBlob=null,recSeconds=0,recTimer=null,recStream=null,recAudioURL=null;
+const fmtSec=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+function recUI(state){
+  const start=document.getElementById('recStartBtn'),stop=document.getElementById('recStopBtn'),
+        prev=document.getElementById('recPreview'),time=document.getElementById('recTime'),size=document.getElementById('recSize');
+  if(state==='recording'){start.style.display='none';stop.style.display='';prev.style.display='none';size.innerHTML='<span class="rec-dot"></span> 錄音中…';}
+  else if(state==='recorded'){start.style.display='';start.textContent='🎤 重新錄音';stop.style.display='none';prev.style.display='';
+    if(recBlob){const kb=(recBlob.size/1024).toFixed(0);size.textContent='已錄 '+fmtSec(recSeconds)+'（'+kb+' KB）';}}
+  else{start.style.display='';start.textContent='🎤 開始錄音';stop.style.display='none';prev.style.display='none';time.textContent='00:00';size.textContent='';}
+}
+async function recStart(){
+  if(!navigator.mediaDevices||!window.MediaRecorder){alert('此瀏覽器不支援錄音，請改用 Chrome／Edge／Safari，並確認網址為 https。');return;}
+  try{recStream=await navigator.mediaDevices.getUserMedia({audio:true});}
+  catch(e){alert('無法開啟麥克風。請按網址列的權限圖示允許麥克風，或確認網址為 https。');return;}
+  recChunks=[];recBlob=null;if(recAudioURL){URL.revokeObjectURL(recAudioURL);recAudioURL=null;}
+  try{mediaRec=new MediaRecorder(recStream);}catch(e){mediaRec=new MediaRecorder(recStream,{});}
+  mediaRec.ondataavailable=e=>{if(e.data&&e.data.size>0)recChunks.push(e.data);};
+  mediaRec.onstop=()=>{recBlob=new Blob(recChunks,{type:(mediaRec&&mediaRec.mimeType)||'audio/webm'});recStream.getTracks().forEach(t=>t.stop());
+    recAudioURL=URL.createObjectURL(recBlob);document.getElementById('recAudio').src=recAudioURL;recUI('recorded');};
+  mediaRec.start();recSeconds=0;document.getElementById('recTime').textContent='00:00';recUI('recording');
+  recTimer=setInterval(()=>{recSeconds++;document.getElementById('recTime').textContent=fmtSec(recSeconds);if(recSeconds>=60)recStop();},1000);
+}
+function recStop(){try{if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop();}catch(e){}clearInterval(recTimer);}
+function recReset(){recStop();recBlob=null;recChunks=[];recSeconds=0;if(recAudioURL){URL.revokeObjectURL(recAudioURL);recAudioURL=null;}recUI('idle');}
+function blobToDataURL(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});}
+document.getElementById('recStartBtn').onclick=recStart;
+document.getElementById('recStopBtn').onclick=recStop;
+document.getElementById('recRedoBtn').onclick=recReset;
+
+document.getElementById('subSend').onclick=async()=>{
+  const name=subName.value.trim();if(!name){alert('請先填寫姓名');return;}
+  recStop();
+  const done={};document.querySelectorAll('#subChecks .check input:checked').forEach(cb=>done[cb.dataset.hwid]=true);
+  // 有錄音則自動標記所有錄音作業為完成
+  const recordItems=day.homework.filter(h=>h.record);
+  let audio='';
+  if(recBlob){audio=await blobToDataURL(recBlob);recordItems.forEach(h=>done[h.id]=true);}
+  const note=subNote.value.trim();const f=subPhoto.files[0];let photo='';if(f){try{photo=await resizeImage(f,900,.7);}catch(e){}}
+  if(!Object.keys(done).length && !audio && !photo){alert('請至少勾選一項、錄音或附照片再送出');return;}
+  const btn=document.getElementById('subSend');btn.disabled=true;const oldTxt=btn.textContent;btn.textContent=audio?'上傳錄音中…':'送出中…';
+  document.getElementById('subConfirm').innerHTML='';
+  let okSend=true;try{await submitWork({student:name,done,note,photo,audio});}catch(e){okSend=false;}
+  btn.disabled=false;btn.textContent=oldTxt;
+  if(okSend){document.getElementById('subConfirm').innerHTML='<div class="confirm">✅ '+esc(name)+'，已收到繳交紀錄'+(audio?'（含錄音）':'')+'！</div>';
+    subName.value='';subNote.value='';subPhoto.value='';document.querySelectorAll('#subChecks .check').forEach(c=>{c.classList.remove('done');c.querySelector('input').checked=false;});recReset();if(!useApi)refresh();}
+  else{document.getElementById('subConfirm').innerHTML='<div class="confirm" style="background:#fbeae6;border-color:#eecabf;color:#9a4a36">⚠️ 送出失敗（可能檔案過大或網路不穩），請再試一次。</div>';}
+};
 document.getElementById('exportCsv').onclick=()=>{const items=day.homework;const header=['學生',...items.map(i=>i.text),'已交數'];const rows=roster.map(name=>{const a=rosterAudit(name);let d=0;const c=items.map(i=>{const v=a[i.id];if(v===true){d++;return '✓';}if(v==='exempt')return '免';return '';});return [name,...c,d+'/'+items.length];});const csv=[header,...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`作業繳交登記表_${currentDate}.csv`;a.click();URL.revokeObjectURL(a.href);};
 document.getElementById('refreshTrack').onclick=refresh;
 function renderPassState(){const el=document.getElementById('passState');if(el)el.textContent=teacherPass?'✅ 已解鎖，可編輯':'🔒 尚未輸入密碼';}
@@ -816,10 +893,16 @@ document.getElementById('dashStats').addEventListener('click',async e=>{
   toast(okAll?'✅ 已全部標記補繳完成':'⚠️ 部分未成功，請重新查詢確認');
   renderDashboard();
 });
-document.getElementById('copyParentLink').onclick=async()=>{const url=location.href.split('#')[0]+'#parent';const m=document.getElementById('copyMsg');try{await navigator.clipboard.writeText(url);m.textContent='✓ 已複製';}catch(e){m.textContent='請手動複製：'+url;}};
+document.getElementById('copyParentLink').onclick=async()=>{const url=location.href.split('#')[0]+'#parent';const m=document.getElementById('copyMsg');try{await navigator.clipboard.writeText(url);m.textContent='✓ 已複製家長連結';}catch(e){m.textContent='請手動複製：'+url;}};
+document.getElementById('copyRecordLink').onclick=async()=>{const url=location.href.split('#')[0]+'#record';const m=document.getElementById('copyMsg');try{await navigator.clipboard.writeText(url);m.textContent='✓ 已複製錄音頁連結';}catch(e){m.textContent='請手動複製：'+url;}};
 function applyParentMode(){
-  if(location.hash==='#parent'){
+  const h=location.hash;
+  if(h==='#parent'||h==='#record'){
     document.body.classList.add('parent-mode');
+    if(h==='#record'){
+      document.body.classList.add('record-mode');
+      const t=document.querySelector('#submitCard h2');if(t)t.textContent='🎙 今日朗讀錄音繳交';
+    }
     setInterval(()=>refresh({silent:true}), 5*60*1000);
     document.addEventListener('visibilitychange',()=>{
       if(document.visibilityState==='visible') refresh({silent:true});
