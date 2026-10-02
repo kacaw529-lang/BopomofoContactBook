@@ -85,6 +85,9 @@
   .vcol ruby{margin:.02em 0}
   .lat{text-orientation:mixed;text-combine-upright:none;white-space:nowrap;letter-spacing:0}
   .tcy{text-combine-upright:all;-webkit-text-combine:horizontal;text-orientation:mixed;font-weight:700}
+  /* 短範圍橫排：依字數自動縮放，寬度約 2.4 個中文字以內 */
+  .hrange{display:inline-block;writing-mode:horizontal-tb;text-orientation:mixed;white-space:nowrap;
+    line-height:1;letter-spacing:0;font-weight:700;vertical-align:middle;margin:.18em 0}
   .vidiom{display:flex;flex-direction:row-reverse;gap:14px;align-items:flex-start}
   .vcol.idiom-word{font-size:clamp(26px,5vw,40px)}
   .vcol.idiom-mean{font-size:clamp(18px,3.2vw,26px);color:var(--chalk-soft);white-space:normal;max-height:340px}
@@ -159,6 +162,11 @@
   .dbadge{display:inline-block;margin-left:8px;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;cursor:pointer;border:1px solid var(--line)}
   .dbadge.on{background:#fdf0e6;color:var(--accent);border-color:#f0cdb0}
   .dbadge.off{background:#f3f5f2;color:var(--muted)}
+  .aud-btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:1px 6px;cursor:pointer;font-size:14px;margin-left:2px}
+  .aud-btn.on{background:#fdf0e6;border-color:#f0cdb0}
+  .aud-row td{background:#fdfcf8;text-align:left}
+  .aud-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .aud-wrap iframe{width:min(420px,100%);height:96px;border:0;border-radius:10px;background:#f3f5f2}
   .rec-ui{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
   .rec-time{font-weight:800;color:var(--accent2);font-variant-numeric:tabular-nums;font-size:16px}
   .rec-ui .rec-dot{width:12px;height:12px;border-radius:50%;background:#c2553f;display:inline-block;animation:recblink 1s infinite}
@@ -307,7 +315,7 @@
     <div class="card" id="submitCard">
       <h2>📤 數位作業繳交（在校或家長手機皆可）</h2>
       <p class="hint" style="margin-top:0">完成作業後，填寫姓名、勾選已完成的項目送出。</p>
-      <div class="field" style="max-width:240px;margin-top:6px"><label>學生姓名（座號＋姓名）</label><input type="text" id="subName" placeholder="12 王小明"></div>
+      <div class="field" style="max-width:240px;margin-top:6px"><label>學生姓名</label><select id="subName"><option value="">— 請選擇學生 —</option></select></div>
       <div class="check-list" id="subChecks"></div>
       <div id="recBlock" style="display:none;margin:6px 0 10px">
         <label style="font-size:12.5px;color:var(--muted);font-weight:600">🎙 朗讀錄音（<span id="recTaskName"></span>）</label>
@@ -369,7 +377,15 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+
+// ===== 頁碼範圍排版（測試調整用）=====
+// RANGE_MAX_LEN：整段範圍在此字元數以內 → 橫排一行；超過 → 上下疊（P.160 ︱ P.161）
+//   例：1-2 = 3 字元、12-13 = 5、P.6-P.7 = 7、P.12-P.13 = 9
+// RANGE_WIDTH：橫排時允許的最大寬度（約幾個中文字寬）×1.67；數字越大，字越大、欄位也越寬
+//   預設 4 ≈ 寬度 2.4 個中文字；字級 = min(1, RANGE_WIDTH ÷ 字元數)
+const RANGE_MAX_LEN = 7;
+const RANGE_WIDTH   = 4;
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -418,6 +434,13 @@ function rubyHTML(text, override){
   let zi=-1,out='',lat='';
   const flush=()=>{
     if(!lat) return;
+    // 短範圍（如 1-2、P.6-P.7，整段 7 字元以內）：整段橫排成一行
+    if(/^[^-–—~～]+[-–—~～][^-–—~～]+$/.test(lat) && lat.length<=RANGE_MAX_LEN){
+      const fs=Math.min(1,RANGE_WIDTH/lat.length).toFixed(2);
+      out+=`<span class="hrange" style="font-size:${fs}em">${e(lat.replace(/[-—~～]/,'–'))}</span>`;
+      lat='';return;
+    }
+    // 長範圍（如 P.160-P.161）：各段縱中橫、以直線連接上下疊
     lat.split(/([-–—~～])/).forEach(p=>{
       if(p==='') return;
       if(/^[-–—~～]$/.test(p)) out+=`<ruby class="punc">︱<rt>　</rt></ruby>`;      // 範圍連接號（直線、置中）
@@ -482,6 +505,7 @@ async function apiPost(payload){
   }
   const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
   let j=null;try{j=await res.json();}catch(e){}
+  if(j&&j.ok===false&&j.code!=='AUTH') throw new Error(j.code||'SERVER');
   if(j&&j.ok===false&&j.code==='AUTH'){
     clearPass();
     if(askPass('密碼錯誤，請重新輸入教師密碼：')){payload.pass=teacherPass;return apiPost(payload);}
@@ -497,7 +521,7 @@ async function loadData(date){
 }
 let toastTimer=null;
 function toast(msg,keep){const t=document.getElementById('saveToast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);if(!keep)toastTimer=setTimeout(()=>t.classList.remove('show'),1600);}
-async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');return true;}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':'⚠️ 儲存失敗，請檢查網路');return false;}}
+async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');return true;}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':m.indexOf('BUSY')>=0?'⏳ 系統忙碌，請稍後再存一次':'⚠️ 儲存失敗，請檢查網路');return false;}}
 let saveQueue=Promise.resolve();
 function enqueue(fn){saveQueue=saveQueue.then(fn,fn);return saveQueue;}
 async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveDay',date,...snapshot});if(j&&j.idioms)j.idioms.forEach(si=>{const li=day.idioms.find(x=>x.id===si.id);if(li&&si.photo)li.photo=si.photo;});}else LS.set('cb:'+date,snapshot);}));}
@@ -537,12 +561,46 @@ function fitBoard(){
   });
 }
 function setBoardZoom(){ clearIdiomImgSize(); if(isBoardFs()) fitBoard(); else applyZoom(); }
-function todayISO(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+/* ============ 日期工具（固定 Asia/Taipei；儲存一律 yyyy-MM-dd 純文字） ============ */
+function fmtTaipei(dt){
+  try{
+    const p={};new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(dt).forEach(x=>p[x.type]=x.value);
+    return p.year+'-'+p.month+'-'+p.day;
+  }catch(e){return new Date(dt.getTime()+8*3600e3).toISOString().slice(0,10);}
+}
+function todayISO(){return fmtTaipei(new Date());}
+// 寬容解析：乾淨字串、Date 物件、Date 長字串 → yyyy-MM-dd；無法解析回傳 ''
+function normISO(v){
+  if(v instanceof Date) return isNaN(v.getTime())?'':fmtTaipei(v);
+  const s=String(v==null?'':v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if(!s) return '';
+  const p=new Date(s);return isNaN(p.getTime())?'':fmtTaipei(p);
+}
+// 純日期運算（以 UTC 計算，不受裝置時區影響）
+function isoParts(iso){const a=iso.split('-').map(Number);return a;}
+function isoAddDays(iso,n){const [y,m,d]=isoParts(iso);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);}
+function isoDow(iso){const [y,m,d]=isoParts(iso);return new Date(Date.UTC(y,m-1,d)).getUTCDay();}
+// 開發初期即建立的日期驗證：三種格式與跨月跨年
+function dateSelfTest(){
+  const cases=[
+    ['乾淨字串',normISO('2026-09-01')==='2026-09-01'],
+    ['Date 物件',normISO(new Date('2026-08-31T16:00:00Z'))==='2026-09-01'],
+    ['Date 長字串',normISO('Tue Sep 01 2026 00:00:00 GMT+0800 (Taiwan Standard Time)')==='2026-09-01'],
+    ['跨月',isoAddDays('2026-08-31',1)==='2026-09-01'],
+    ['跨年',isoAddDays('2026-12-31',1)==='2027-01-01'],
+    ['閏年',isoAddDays('2028-02-28',1)==='2028-02-29'],
+    ['星期',isoDow('2026-09-01')===2]
+  ];
+  const fail=cases.filter(c=>!c[1]).map(c=>c[0]);
+  if(fail.length){console.error('日期自我檢查失敗：',fail);}
+  return fail.length===0;
+}
 const WD=['日','一','二','三','四','五','六'];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function driveImg(u){if(!u)return u;const m=String(u).match(/[?&]id=([-\w]+)/)||String(u).match(/\/file\/d\/([-\w]+)/);return m?('https://drive.google.com/thumbnail?id='+m[1]+'&sz=w1000'):u;}
-const weekday=iso=>WD[new Date(iso+'T00:00:00').getDay()];
+function weekday(iso){return WD[isoDow(iso)];}
 function dateCN(iso){const[y,m,d]=iso.split('-').map(Number);return `日期：${numCN(m)}月${numCN(d)}日（${weekday(iso)}）`;}
 function resizeImage(file,maxDim=720,q=.72){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{let{width:w,height:h}=img;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.onerror=rej;img.src=r.result;};r.onerror=rej;r.readAsDataURL(file);});}
 function applyData(d){
@@ -555,7 +613,14 @@ function applyData(d){
 // 快取：讓再次開啟時先秒顯上次內容，避免空白或閃跳
 const CK=d=>'cb:cache:'+d;
 function readCache(date){try{const c=LS.get(CK(date));return (c&&c.data)?c:null;}catch(e){return null;}}
-function writeCache(date,data){try{LS.set(CK(date),{t:Date.now(),data});}catch(e){}}
+function pruneCache(keep){
+  try{
+    const items=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('cb:cache:')===0){const c=LS.get(k);items.push({k,t:(c&&c.t)||0});}}
+    items.sort((a,b)=>b.t-a.t).slice(keep||14).forEach(x=>localStorage.removeItem(x.k));
+  }catch(e){}
+}
+function writeCache(date,data){try{LS.set(CK(date),{t:Date.now(),data});}catch(e){}pruneCache(14);}
 
 let loadToken=0;
 async function refresh(opts){
@@ -619,7 +684,15 @@ function renderLkEdit(){
 }
 
 /* ============ 渲染：聯絡簿頁 ============ */
+function driveIdOf(u){const s=String(u||'');const m=s.match(/[?&]id=([-\w]+)/)||s.match(/\/file\/d\/([-\w]+)/);return m?m[1]:'';}
+function renderSubName(){
+  const sel=document.getElementById('subName');if(!sel||sel.tagName!=='SELECT')return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— 請選擇學生 —</option>'+roster.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(cur&&roster.indexOf(cur)>=0)sel.value=cur;          // 背景更新時保留家長已選的名字
+}
 function renderMain(){
+  renderSubName();
   buildVColumns(document.getElementById('vboard'),true);
   setBoardZoom();
   const pl=document.getElementById('mainLinks');
@@ -641,15 +714,16 @@ function renderMain(){
 /* ============ 渲染：稽核登記表 ============ */
 function rosterAudit(name){return audit[name]||{};}
 function latestSubs(){const l={};subs.forEach(s=>{if(!l[s.student]||s.ts>l[s.student].ts)l[s.student]=s;});return l;}
-function matchOnline(name){const ls=latestSubs();for(const k in ls){if(k===name||k.indexOf(name)>=0||name.indexOf(k)>=0)return ls[k];}return null;}
+function matchOnline(name){
+  const ls=latestSubs();
+  if(ls[name])return ls[name];                                   // 名單下拉送出的資料：完全相同
+  const hits=Object.keys(ls).filter(k=>k.indexOf(name)>=0||name.indexOf(k)>=0);
+  return hits.length===1?ls[hits[0]]:null;                       // 舊的手打資料：唯一符合才採用，避免配錯人
+}
 /* ============ 一週檢視 ============ */
 function weekRange(iso){
-  const d=new Date(iso+'T00:00:00'), dow=d.getDay();
-  const mon=new Date(d); mon.setDate(d.getDate()-((dow+6)%7));   // 週一
-  const out=[];
-  for(let i=0;i<5;i++){const x=new Date(mon);x.setDate(mon.getDate()+i);
-    x.setMinutes(x.getMinutes()-x.getTimezoneOffset());out.push(x.toISOString().slice(0,10));}
-  return out;
+  const mon=isoAddDays(iso,-((isoDow(iso)+6)%7));   // 該週週一
+  return [0,1,2,3,4].map(i=>isoAddDays(mon,i));
 }
 async function renderWeek(){
   const wrap=document.getElementById('weekWrap');if(!wrap)return;
@@ -658,7 +732,7 @@ async function renderWeek(){
   let data=[];
   if(useApi){
     try{ const r=await jsonp({action:'range',from:days[0],to:days[4]});
-      data=days.map(d=>{const f=(r.days||[]).find(x=>x.date===d);return {date:d,homework:f?f.homework:[],reminder:''};});
+      data=days.map(d=>{const f=(r.days||[]).find(x=>normISO(x.date)===d);return {date:d,homework:f?f.homework:[],reminder:f?(f.reminder||''):''};});
     }catch(e){ data=days.map(d=>({date:d,homework:[],reminder:''})); }
   }else{
     data=days.map(d=>{const o=LS.get('cb:'+d)||{};return {date:d,homework:o.homework||[],reminder:o.reminder||''};});
@@ -715,7 +789,7 @@ function renderTrack(){
       if(v===true){done++;return `<td><input type="checkbox" class="audit" data-stu="${esc(name)}" data-item="${i.id}" checked></td>`;}
       if(v==='exempt'){exempt++;return `<td><span class="exempt" data-stu="${esc(name)}" data-item="${i.id}" title="免繳（點此取消）">免</span></td>`;}
       return `<td><input type="checkbox" class="audit" data-stu="${esc(name)}" data-item="${i.id}"></td>`;}).join('');
-    return `<tr><td class="name">${esc(name)}${on?(on.photo?` <a href="${esc(driveImg(on.photo))}" target="_blank" rel="noopener" title="檢視線上繳交照片">📷</a>`:' <span title="已線上送出">🟢</span>'):''}${on&&on.audio?` <a href="${esc(on.audio)}" target="_blank" rel="noopener" title="播放繳交錄音">🎙</a>`:''}</td>${cells}<td><b>${done}/${items.length}</b>${exempt?` <span class="exempt-mini">免${exempt}</span>`:''}</td></tr>`;
+    return `<tr><td class="name">${esc(name)}${on?(on.photo?` <a href="${esc(driveImg(on.photo))}" target="_blank" rel="noopener" title="檢視線上繳交照片">📷</a>`:' <span title="已線上送出">🟢</span>'):''}${on&&on.audio?` <button type="button" class="aud-btn" data-aud="${esc(on.audio)}" title="播放繳交錄音">🎙</button>`:''}</td>${cells}<td><b>${done}/${items.length}</b>${exempt?` <span class="exempt-mini">免${exempt}</span>`:''}</td></tr>`;
   }).join('');
   tbl.innerHTML=head+rows;
   const per=items.map(i=>roster.filter(n=>rosterAudit(n)[i.id]===true).length);
@@ -770,7 +844,7 @@ const dp=document.getElementById('datePicker');
 function setDate(iso){currentDate=iso;dp.value=iso;document.getElementById('weekday').textContent='週'+weekday(iso);refresh();}
 dp.addEventListener('change',e=>setDate(e.target.value));
 document.getElementById('todayBtn').addEventListener('click',()=>setDate(todayISO()));
-function shift(n){const d=new Date(currentDate+'T00:00:00');d.setDate(d.getDate()+n);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());setDate(d.toISOString().slice(0,10));}
+function shift(n){setDate(isoAddDays(currentDate,n));}
 document.getElementById('prevDay').onclick=()=>shift(-1);
 document.getElementById('nextDay').onclick=()=>shift(1);
 // Enter 快速新增
@@ -820,7 +894,7 @@ document.getElementById('recStopBtn').onclick=recStop;
 document.getElementById('recRedoBtn').onclick=recReset;
 
 document.getElementById('subSend').onclick=async()=>{
-  const name=subName.value.trim();if(!name){alert('請先填寫姓名');return;}
+  const name=subName.value.trim();if(!name){alert('請先選擇學生姓名');return;}
   recStop();
   const done={};document.querySelectorAll('#subChecks .check input:checked').forEach(cb=>done[cb.dataset.hwid]=true);
   // 有錄音則自動標記所有錄音作業為完成
@@ -839,6 +913,15 @@ document.getElementById('subSend').onclick=async()=>{
 };
 document.getElementById('exportCsv').onclick=()=>{const items=day.homework;const header=['學生',...items.map(i=>i.text),'已交數'];const rows=roster.map(name=>{const a=rosterAudit(name);let d=0;const c=items.map(i=>{const v=a[i.id];if(v===true){d++;return '✓';}if(v==='exempt')return '免';return '';});return [name,...c,d+'/'+items.length];});const csv=[header,...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`作業繳交登記表_${currentDate}.csv`;a.click();URL.revokeObjectURL(a.href);};
 document.getElementById('refreshTrack').onclick=refresh;
+document.getElementById('trackTable').addEventListener('click',e=>{
+  const b=e.target.closest('.aud-btn');if(!b)return;
+  const tr=b.closest('tr'),next=tr.nextElementSibling;
+  if(next&&next.classList.contains('aud-row')){next.remove();b.classList.remove('on');return;}
+  const id=driveIdOf(b.dataset.aud),cols=tr.children.length;
+  const row=document.createElement('tr');row.className='aud-row';
+  row.innerHTML=`<td colspan="${cols}"><div class="aud-wrap">${id?`<iframe src="https://drive.google.com/file/d/${id}/preview" allow="autoplay" title="錄音播放"></iframe>`:''}<a href="${esc(b.dataset.aud)}" target="_blank" rel="noopener" class="mini-act">↗ 新分頁開啟</a></div></td>`;
+  tr.after(row);b.classList.add('on');
+});
 function renderPassState(){const el=document.getElementById('passState');if(el)el.textContent=teacherPass?'✅ 已解鎖，可編輯':'🔒 尚未輸入密碼';}
 document.getElementById('passSet').onclick=()=>{if(askPass('請輸入教師密碼：'))renderPassState();};
 document.getElementById('passOut').onclick=()=>{clearPass();renderPassState();toast('🚪 已登出，此裝置無法再修改');};
@@ -854,10 +937,8 @@ document.getElementById('tplList').addEventListener('click',async e=>{
   if(t){const text=templates[+t.dataset.tpl];if(!text)return;day.homework.push({id:uid(),text,digital:false,zhuyin:{}});await saveDay();renderAll();}
 });
 document.getElementById('copyPrev').onclick=async()=>{
-  const d=new Date(currentDate+'T00:00:00');
   for(let back=1;back<=7;back++){
-    const p=new Date(d);p.setDate(p.getDate()-back);p.setMinutes(p.getMinutes()-p.getTimezoneOffset());
-    const iso=p.toISOString().slice(0,10);
+    const iso=isoAddDays(currentDate,-back);
     const prev=await loadData(iso);
     if(prev&&prev.homework&&prev.homework.length){
       prev.homework.forEach(h=>day.homework.push({id:uid(),text:h.text,digital:!!h.digital,zhuyin:{}}));
@@ -914,10 +995,12 @@ function applyParentMode(){
 (function init(){
   if(window.pinyinPro&&window.pinyinPro.customPinyin){try{window.pinyinPro.customPinyin(TW_DICT);}catch(e){}}
   dp.value=currentDate;document.getElementById('weekday').textContent='週'+weekday(currentDate);
-  (function(){const t=todayISO();document.getElementById('dashTo').value=t;const f=new Date(t+'T00:00:00');f.setDate(f.getDate()-45);f.setMinutes(f.getMinutes()-f.getTimezoneOffset());document.getElementById('dashFrom').value=f.toISOString().slice(0,10);})();
+  (function(){const t=todayISO();document.getElementById('dashTo').value=t;document.getElementById('dashFrom').value=isoAddDays(t,-45);})();
   const cn=document.getElementById('cfgNotice');
   if(!useApi)cn.innerHTML='<div class="notice warn"><span>⚙️</span><span>尚未設定 Google 試算表後端，資料暫存在本機瀏覽器（測試用）。部署 Apps Script 後，把網址填入程式最上方的 <b>API_URL</b>。</span></div>';
   else cn.innerHTML='<div class="notice"><span>☁️</span><span>資料儲存於班級 Google 試算表，多裝置同步。</span></div>';
+  if(!dateSelfTest())toast('⚠️ 日期自我檢查未通過，請通知管理者');
+  pruneCache(14);
   applyParentMode();renderPassState();refresh();
   if(location.hash!=='#parent'){var sc=document.createElement('script');sc.src='sortable.min.js';sc.onload=function(){renderLkEdit();};document.head.appendChild(sc);}
 })();
