@@ -240,7 +240,7 @@
           <button class="btn btn-ghost" id="tplAdd">＋ 存為範本</button>
         </div>
       </div>
-      <div class="field" style="margin-top:12px"><label>今日叮嚀（選填，會以黃字顯示在黑板）</label><input type="text" id="hwReminder" placeholder="帶齊文具，認真完成作業喔！"></div>
+      <div class="field" style="margin-top:12px"><label>今日叮嚀（選填，會以黃字顯示在黑板）</label><input type="text" id="hwReminder" placeholder="帶齊文具，認真完成作業喔！"><span class="zh" id="remZh" data-edit-remzh="1" title="點我修改叮嚀注音" style="display:none"></span></div>
     </div>
     <div class="card">
       <h2>🀄 每日成語（可放照片）</h2>
@@ -377,15 +377,15 @@
 
 <script>
 /* ============ 設定 ============ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyB0Qw-Cbr9dBDkjUSu_E-cCQjd4peUTacUElnCrwwyysg_-vcsnMDZ2uMewVMPPMN8/exec";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
+const API_URL = "";   // 部署 Apps Script 後貼上 /exec 網址；留空＝本機暫存
 
 // ===== 頁碼範圍排版（測試調整用）=====
 // RANGE_MAX_LEN：整段範圍在此字元數以內 → 橫排一行；超過 → 上下疊（P.160 ︱ P.161）
 //   例：1-2 = 3 字元、12-13 = 5、P.6-P.7 = 7、P.12-P.13 = 9
 // RANGE_WIDTH：橫排時允許的最大寬度（約幾個中文字寬）×1.67；數字越大，字越大、欄位也越寬
 //   預設 4 ≈ 寬度 2.4 個中文字；字級 = min(1, RANGE_WIDTH ÷ 字元數)
-const RANGE_MAX_LEN = 5;
-const RANGE_WIDTH   = 2;
+const RANGE_MAX_LEN = 7;
+const RANGE_WIDTH   = 4;
 
 // 台灣教育部讀音覆寫（可自行增補；詞優先以免影響其他詞）
 const TW_DICT = {
@@ -517,14 +517,14 @@ const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return
 async function loadData(date){
   if(useApi){try{return await jsonp({action:'load',date});}catch(e){return {homework:[],idioms:[],reminder:'',links:LS.get('cb:links')||[],submissions:[],roster:LS.get('cb:roster')||DEFAULT_ROSTER.slice(),audit:LS.get('cb:audit:'+date)||{}};}}
   const o=LS.get('cb:'+date)||{};
-  return {homework:o.homework||[],idioms:o.idioms||[],reminder:o.reminder||'',links:LS.get('cb:links')||[],submissions:LS.get('cb:sub:'+date)||[],roster:LS.get('cb:roster')||DEFAULT_ROSTER.slice(),audit:LS.get('cb:audit:'+date)||{}};
+  return {homework:o.homework||[],idioms:o.idioms||[],reminder:o.reminder||'',reminderZh:o.reminderZh||{},links:LS.get('cb:links')||[],submissions:LS.get('cb:sub:'+date)||[],roster:LS.get('cb:roster')||DEFAULT_ROSTER.slice(),audit:LS.get('cb:audit:'+date)||{}};
 }
 let toastTimer=null;
 function toast(msg,keep){const t=document.getElementById('saveToast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);if(!keep)toastTimer=setTimeout(()=>t.classList.remove('show'),1600);}
 async function withSave(fn){toast('☁️ 儲存中…',true);try{await fn();toast('✅ 已儲存');return true;}catch(e){const m=String(e&&e.message);toast(m.indexOf('AUTH')>=0?'🔒 未通過密碼驗證，未儲存':m.indexOf('BUSY')>=0?'⏳ 系統忙碌，請稍後再存一次':'⚠️ 儲存失敗，請檢查網路');return false;}}
 let saveQueue=Promise.resolve();
 function enqueue(fn){saveQueue=saveQueue.then(fn,fn);return saveQueue;}
-async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveDay',date,...snapshot});if(j&&j.idioms)j.idioms.forEach(si=>{const li=day.idioms.find(x=>x.id===si.id);if(li&&si.photo)li.photo=si.photo;});}else LS.set('cb:'+date,snapshot);}));}
+async function saveDay(){const snapshot={homework:JSON.parse(JSON.stringify(day.homework)),idioms:JSON.parse(JSON.stringify(day.idioms)),reminder:day.reminder,reminderZh:JSON.parse(JSON.stringify(day.reminderZh||{}))},date=currentDate;return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveDay',date,...snapshot});if(j&&j.idioms)j.idioms.forEach(si=>{const li=day.idioms.find(x=>x.id===si.id);if(li&&si.photo)li.photo=si.photo;});}else LS.set('cb:'+date,snapshot);}));}
 async function saveLinks(){const snap=JSON.parse(JSON.stringify(links));return enqueue(()=>withSave(async()=>{if(useApi){const j=await apiPost({action:'saveLinks',links:snap});if(j&&j.links)j.links.forEach(sl=>{const ll=links.find(x=>x.id===sl.id);if(ll&&sl.icon)ll.icon=sl.icon;});}else LS.set('cb:links',snap);}));}
 async function saveRoster(){if(useApi)await apiPost({action:'saveRoster',roster});else LS.set('cb:roster',roster);}
 async function saveAuditDate(date,a){const snap=JSON.parse(JSON.stringify(a));return enqueue(()=>withSave(async()=>{if(useApi)await apiPost({action:'saveAudit',date,audit:snap});else LS.set('cb:audit:'+date,snap);}));}
@@ -533,7 +533,7 @@ async function submitWork(rec){if(useApi)await apiPost({action:'submit',date:cur
 
 /* ============ 狀態 ============ */
 const DEFAULT_ROSTER=['1號','2號','3號','4號','5號','6號'];
-let currentDate=todayISO(),day={homework:[],idioms:[],reminder:''},links=[],subs=[],roster=DEFAULT_ROSTER.slice(),audit={},dash={roster:[],days:[]};
+let currentDate=todayISO(),day={homework:[],idioms:[],reminder:'',reminderZh:{}},links=[],subs=[],roster=DEFAULT_ROSTER.slice(),audit={},dash={roster:[],days:[]};
 let templates=(()=>{try{return LS.get('cb:templates')||[];}catch(e){return [];}})();
 let zoom=(()=>{try{return parseFloat(localStorage.getItem('cb:zoom'))||1;}catch(e){return 1;}})();
 function isBoardFs(){return document.fullscreenElement===document.getElementById('board');}
@@ -604,7 +604,7 @@ function weekday(iso){return WD[isoDow(iso)];}
 function dateCN(iso){const[y,m,d]=iso.split('-').map(Number);return `日期：${numCN(m)}月${numCN(d)}日（${weekday(iso)}）`;}
 function resizeImage(file,maxDim=720,q=.72){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{let{width:w,height:h}=img;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.onerror=rej;img.src=r.result;};r.onerror=rej;r.readAsDataURL(file);});}
 function applyData(d){
-  day={homework:d.homework||[],idioms:d.idioms||[],reminder:d.reminder||''};
+  day={homework:d.homework||[],idioms:d.idioms||[],reminder:d.reminder||'',reminderZh:d.reminderZh||{}};
   links=d.links||[];subs=d.submissions||[];
   roster=(d.roster&&d.roster.length)?d.roster:DEFAULT_ROSTER.slice();
   audit=d.audit||{};
@@ -652,7 +652,7 @@ function buildVColumns(target,withReminder){
   if(day.homework.length){
     cols+=day.homework.map(h=>`<div class="vcol">${rubyHTML(h.text,h.zhuyin)}</div>`).join('');
   }else cols+=`<div class="vcol" style="opacity:.6">${rubyHTML('今日尚未填寫功課')}</div>`;
-  if(withReminder&&day.reminder) cols+=`<div class="vsep"></div><div class="vcol reminder">${rubyHTML('叮嚀：'+day.reminder)}</div>`;
+  if(withReminder&&day.reminder) cols+=`<div class="vsep"></div><div class="vcol reminder">${rubyHTML('叮嚀：')}${rubyHTML(day.reminder,day.reminderZh)}</div>`;
   if(day.idioms.length){
     cols+=`<div class="vsep"></div>`+day.idioms.map(i=>`<div class="vidiom"><div class="vcol idiom-word">${rubyHTML(i.text,i.zhuyin)}</div>${i.mean?`<div class="vcol idiom-mean">${rubyHTML(i.mean,i.zhuyinMean)}</div>`:''}${i.photo?`<img src="${esc(driveImg(i.photo))}" alt="${esc(i.text)}">`:''}</div>`).join('');
   }
@@ -664,6 +664,8 @@ function renderHwList(){
   const el=document.getElementById('hwList');
   el.innerHTML=day.homework.length?day.homework.map(h=>`<div class="item"><div class="body">${esc(h.text)}<span class="dbadge ${h.digital?'on':'off'}" data-toggle-digital="${h.id}" title="切換是否開放線上繳交">${h.digital?'📱 數位作業':'設為數位'}</span><span class="dbadge ${h.record?'on':'off'}" data-toggle-record="${h.id}" title="切換是否開放麥克風錄音">${h.record?'🎙 錄音作業':'設為錄音'}</span><div class="zh" data-edit-zh="${h.id}" title="點我修改注音">注音：${esc((h.zhuyin&&Object.keys(h.zhuyin).length)?mergeZh(h):plainZhuyin(h.text))} ✎</div></div><button class="del" data-del-hw="${h.id}">✕</button></div>`).join(''):'<div class="empty">尚未新增功課</div>';
   const r=document.getElementById('hwReminder'); if(r&&document.activeElement!==r) r.value=day.reminder||'';
+  const rz=document.getElementById('remZh');
+  if(rz){ if(day.reminder){rz.style.display='inline-block';rz.style.marginTop='6px';rz.textContent='注音：'+mergeZhFor(day.reminder,day.reminderZh)+' ✎';} else rz.style.display='none'; }
 }
 function renderIdList(){
   const el=document.getElementById('idList');
@@ -853,11 +855,11 @@ document.getElementById('nextDay').onclick=()=>shift(1);
   if(el)el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById(btn).click();}});
 });
 document.getElementById('hwAdd').onclick=async()=>{const c=hwContent.value.trim();if(!c){alert('請填寫功課項目');return;}const item={id:uid(),text:c,digital:document.getElementById('hwDigital').checked,record:document.getElementById('hwRecord').checked,zhuyin:{}};day.homework.push(item);renderAll();const ok=await saveDay();if(ok===false){day.homework=day.homework.filter(x=>x.id!==item.id);renderAll();return;}hwContent.value='';document.getElementById('hwDigital').checked=false;document.getElementById('hwRecord').checked=false;};
-document.getElementById('hwReminder').addEventListener('change',async e=>{day.reminder=e.target.value.trim();await saveDay();renderMain();});
+document.getElementById('hwReminder').addEventListener('change',async e=>{const v=e.target.value.trim();if(v!==day.reminder)day.reminderZh={};day.reminder=v;await saveDay();renderAll();});
 document.getElementById('idAdd').onclick=async()=>{const t=idText.value.trim(),m=idMean.value.trim(),f=idPhoto.files[0];if(!t){alert('請填寫成語');return;}let photo='';if(f){try{photo=await resizeImage(f);}catch(e){}}const item={id:uid(),text:t,mean:m,photo};day.idioms.push(item);renderAll();const ok=await saveDay();if(ok===false){day.idioms=day.idioms.filter(x=>x.id!==item.id);renderAll();return;}idText.value='';idMean.value='';idPhoto.value='';};
 document.getElementById('lkAdd').onclick=async()=>{const t=lkTitle.value.trim();let u=lkUrl.value.trim();if(!t||!u){alert('請填寫名稱與網址');return;}if(!/^https?:\/\//i.test(u))u='https://'+u;const f=document.getElementById('lkIcon').files[0];let icon='';if(f){try{icon=await resizeImage(f,128,.82);}catch(e){}}const item={id:uid(),title:t,url:u,icon};links.push(item);renderAll();const ok=await saveLinks();if(ok===false){links=links.filter(x=>x.id!==item.id);renderAll();return;}lkTitle.value='';lkUrl.value='';document.getElementById('lkIcon').value='';};
 document.body.addEventListener('change',async e=>{const f=e.target.closest('input[data-icon-lk]');if(!f||!f.files[0])return;const l=links.find(x=>x.id===f.dataset.iconLk);if(!l)return;const old=l.icon;try{l.icon=await resizeImage(f.files[0],128,.82);}catch(err){return;}renderAll();const ok=await saveLinks();if(ok===false){l.icon=old;renderAll();}});
-document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-edit-idzh],[data-edit-idmean],[data-toggle-digital],[data-toggle-record],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.toggleRecord){const h=day.homework.find(x=>x.id===b.dataset.toggleRecord);if(h){h.record=!h.record;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}else if(b.dataset.editIdzh){const it=day.idioms.find(x=>x.id===b.dataset.editIdzh);if(!it)return;const val=prompt('修改成語注音（以空白分隔每個字）：',mergeZhFor(it.text,it.zhuyin));if(val!==null){it.zhuyin=parseZhInput(it.text,val,it.zhuyin);renderAll();ok=await saveDay();}}else if(b.dataset.editIdmean){const it=day.idioms.find(x=>x.id===b.dataset.editIdmean);if(!it)return;const val=prompt('修改解釋注音：\n・只改個別字：輸入「字=注音」，例 於=ㄩˊ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(it.mean,it.zhuyinMean));if(val!==null){it.zhuyinMean=parseZhInput(it.mean,val,it.zhuyinMean);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
+document.body.addEventListener('click',async e=>{const b=e.target.closest('[data-del-hw],[data-del-id],[data-del-lk],[data-edit-zh],[data-edit-idzh],[data-edit-idmean],[data-edit-remzh],[data-toggle-digital],[data-toggle-record],[data-rmicon-lk]');if(!b)return;let ok=true;if(b.dataset.delHw){day.homework=day.homework.filter(x=>x.id!==b.dataset.delHw);renderAll();ok=await saveDay();}else if(b.dataset.delId){day.idioms=day.idioms.filter(x=>x.id!==b.dataset.delId);renderAll();ok=await saveDay();}else if(b.dataset.delLk){links=links.filter(x=>x.id!==b.dataset.delLk);renderAll();ok=await saveLinks();}else if(b.dataset.rmiconLk){const l=links.find(x=>x.id===b.dataset.rmiconLk);if(l){l.icon='';renderAll();ok=await saveLinks();}}else if(b.dataset.toggleDigital){const h=day.homework.find(x=>x.id===b.dataset.toggleDigital);if(h){h.digital=!h.digital;renderAll();ok=await saveDay();}}else if(b.dataset.toggleRecord){const h=day.homework.find(x=>x.id===b.dataset.toggleRecord);if(h){h.record=!h.record;renderAll();ok=await saveDay();}}else if(b.dataset.editZh){const h=day.homework.find(x=>x.id===b.dataset.editZh);if(!h)return;const val=prompt('修改注音（以空白分隔每個字，標點免填）：',mergeZh(h));if(val!==null){const a2=val.trim().split(/\s+/);h.zhuyin={};a2.forEach((z,i)=>h.zhuyin[i]=z);renderAll();ok=await saveDay();}}else if(b.dataset.editIdzh){const it=day.idioms.find(x=>x.id===b.dataset.editIdzh);if(!it)return;const val=prompt('修改成語注音（以空白分隔每個字）：',mergeZhFor(it.text,it.zhuyin));if(val!==null){it.zhuyin=parseZhInput(it.text,val,it.zhuyin);renderAll();ok=await saveDay();}}else if(b.dataset.editRemzh){if(!day.reminder)return;const val=prompt('修改叮嚀注音：\n・只改個別字：輸入「字=注音」，例 繳=ㄐㄧㄠˇ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(day.reminder,day.reminderZh));if(val!==null){day.reminderZh=parseZhInput(day.reminder,val,day.reminderZh);renderAll();ok=await saveDay();}}else if(b.dataset.editIdmean){const it=day.idioms.find(x=>x.id===b.dataset.editIdmean);if(!it)return;const val=prompt('修改解釋注音：\n・只改個別字：輸入「字=注音」，例 於=ㄩˊ（可多組，以空白分隔）\n・或整串以空白分隔輸入每個字的注音',mergeZhFor(it.mean,it.zhuyinMean));if(val!==null){it.zhuyinMean=parseZhInput(it.mean,val,it.zhuyinMean);renderAll();ok=await saveDay();}}if(ok===false)refresh({silent:true});});
 document.getElementById('fsBtn').onclick=()=>{const el=document.getElementById('board');if(!document.fullscreenElement)(el.requestFullscreen||el.webkitRequestFullscreen).call(el);else document.exitFullscreen();};
 document.addEventListener('fullscreenchange',setBoardZoom);
 window.addEventListener('resize',()=>{if(isBoardFs())fitBoard();});
